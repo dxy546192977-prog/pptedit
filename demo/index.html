@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>PPTedit Demo</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #f7f5f2;
+        --muted: #aaa6b2;
+        --purple: #8b5cf6;
+        --purple-soft: #c4b5fd;
+        --lime: #c7f36b;
+        --paper: #111116;
+        --panel: #1a1922;
+        --line: rgba(255, 255, 255, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #08080b;
+        font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      #stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 1600px;
+        height: 900px;
+        overflow: hidden;
+        transform: translate(-50%, -50%) scale(var(--preview-scale, 1));
+        transform-origin: center;
+        background: var(--paper);
+        box-shadow: 0 32px 120px rgba(0, 0, 0, 0.55);
+      }
+
+      #deck {
+        display: flex;
+        width: 3200px;
+        height: 900px;
+        transform: translate3d(0, 0, 0);
+        transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      .slide {
+        position: relative;
+        flex: 0 0 1600px;
+        width: 1600px;
+        height: 900px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 82% 14%, rgba(139, 92, 246, 0.2), transparent 30%),
+          linear-gradient(145deg, #111116 0%, #0d0d12 100%);
+        color: var(--ink);
+      }
+
+      .slide::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+        background-size: 56px 56px;
+        mask-image: linear-gradient(to bottom, black, transparent 75%);
+      }
+
+      .topbar {
+        position: absolute;
+        left: 72px;
+        right: 72px;
+        top: 52px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 2;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .brand-mark {
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        background: var(--ink);
+        color: #111116;
+        font-size: 16px;
+        font-weight: 900;
+      }
+
+      .page-label {
+        color: #777382;
+        font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      #hero-kicker {
+        position: absolute;
+        left: 86px;
+        top: 176px;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border: 1px solid rgba(199, 243, 107, 0.28);
+        border-radius: 999px;
+        background: rgba(199, 243, 107, 0.08);
+        color: var(--lime);
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      #hero-kicker::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 16px currentColor;
+      }
+
+      #demo-title {
+        position: absolute;
+        left: 82px;
+        top: 236px;
+        width: 820px;
+        margin: 0;
+        color: var(--ink);
+        font-size: 88px;
+        font-weight: 720;
+        line-height: 0.97;
+        letter-spacing: -0.065em;
+      }
+
+      #demo-subtitle {
+        position: absolute;
+        left: 88px;
+        top: 446px;
+        width: 660px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 24px;
+        font-weight: 430;
+        line-height: 1.45;
+        letter-spacing: -0.02em;
+      }
+
+      #demo-actions {
+        position: absolute;
+        left: 88px;
+        top: 570px;
+        display: flex;
+        gap: 12px;
+      }
+
+      .action-chip {
+        min-width: 152px;
+        padding: 15px 20px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.045);
+        color: #d7d4dc;
+        font-size: 15px;
+        font-weight: 650;
+        text-align: center;
+      }
+
+      .action-chip.primary {
+        border-color: transparent;
+        background: var(--ink);
+        color: #111116;
+      }
+
+      #demo-card {
+        position: absolute;
+        left: 1008px;
+        top: 172px;
+        width: 500px;
+        height: 548px;
+        padding: 28px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 30px;
+        background: linear-gradient(145deg, rgba(39, 36, 52, 0.96), rgba(19, 18, 26, 0.96));
+        box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+      }
+
+      .window-bar {
+        height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .window-dots {
+        display: flex;
+        gap: 7px;
+      }
+
+      .window-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4a4654;
+      }
+
+      .window-path {
+        color: #777382;
+        font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      .editor-preview {
+        position: absolute;
+        left: 28px;
+        right: 28px;
+        top: 92px;
+        bottom: 28px;
+        display: grid;
+        grid-template-columns: 1fr 92px;
+        gap: 12px;
+      }
+
+      .mini-canvas {
+        position: relative;
+        overflow: hidden;
+        border-radius: 18px;
+        background: #f4f0e8;
+        color: #15131a;
+      }
+
+      .mini-canvas .mini-kicker {
+        position: absolute;
+        left: 24px;
+        top: 28px;
+        color: #7758d6;
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+
+      .mini-canvas h2 {
+        position: absolute;
+        left: 24px;
+        top: 72px;
+        width: 250px;
+        margin: 0;
+        font-size: 38px;
+        line-height: 0.98;
+        letter-spacing: -0.055em;
+      }
+
+      .mini-canvas .mini-blocks {
+        position: absolute;
+        left: 24px;
+        right: 24px;
+        bottom: 28px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .mini-canvas .mini-blocks span {
+        height: 68px;
+        border-radius: 11px;
+        background: #ded6f8;
+      }
+
+      .mini-canvas .mini-blocks span:last-child {
+        background: #dff0b7;
+      }
+
+      .mini-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        padding: 14px 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.055);
+      }
+
+      .mini-panel strong {
+        margin-bottom: 4px;
+        color: #c9c5d1;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .mini-field {
+        height: 25px;
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .mini-swatch {
+        width: 30px;
+        background: var(--purple);
+      }
+
+      #feature-row {
+        position: absolute;
+        left: 88px;
+        right: 88px;
+        bottom: 62px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .feature {
+        min-height: 98px;
+        padding: 20px 22px;
+        border-top: 1px solid var(--line);
+      }
+
+      .feature strong {
+        display: block;
+        margin-bottom: 9px;
+        color: #e9e6ed;
+        font-size: 16px;
+      }
+
+      .feature span {
+        color: #777382;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .slide-two {
+        background:
+          radial-gradient(circle at 30% 35%, rgba(199, 243, 107, 0.12), transparent 32%),
+          #0f0f14;
+      }
+
+      #slide-two-title {
+        position: absolute;
+        left: 98px;
+        top: 160px;
+        width: 880px;
+        margin: 0;
+        font-size: 76px;
+        line-height: 1;
+        letter-spacing: -0.055em;
+      }
+
+      #slide-two-copy {
+        position: absolute;
+        left: 104px;
+        top: 362px;
+        width: 650px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 23px;
+        line-height: 1.5;
+      }
+
+      .capability-grid {
+        position: absolute;
+        left: 908px;
+        top: 158px;
+        width: 600px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .capability {
+        min-height: 178px;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .capability b {
+        display: grid;
+        width: 42px;
+        height: 42px;
+        place-items: center;
+        margin-bottom: 24px;
+        border-radius: 12px;
+        background: rgba(139, 92, 246, 0.16);
+        color: var(--purple-soft);
+        font-size: 16px;
+      }
+
+      .capability strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 17px;
+      }
+
+      .capability span {
+        color: #777382;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      #nav {
+        position: fixed;
+        left: 50%;
+        bottom: 22px;
+        z-index: 20;
+        display: flex;
+        gap: 7px;
+        transform: translateX(-50%);
+      }
+
+      #nav .dot {
+        width: 28px;
+        height: 4px;
+        padding: 0;
+        border: 0;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.2);
+        cursor: pointer;
+      }
+
+      #nav .dot.active {
+        background: rgba(255, 255, 255, 0.86);
+      }
+
+      #liveStatus {
+        position: fixed;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+      }
+
+      .speaker-note {
+        display: none;
+      }
+
+      body.h5ve-active #nav {
+        display: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #deck {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="stage" data-h5ve-width="1600" data-h5ve-height="900">
+      <div id="deck">
+        <section class="slide" data-theme="dark" data-h5ve-layer-name="Intro slide">
+          <header class="topbar" data-h5ve-layer-name="Top navigation">
+            <div class="brand" data-h5ve-layer-name="PPTedit logo">
+              <span class="brand-mark">P</span>
+              <span>PPTedit</span>
+            </div>
+            <div class="page-label">HTML / VISUAL CANVAS &nbsp; · &nbsp; <span data-h5ve-page-number>01 / 02</span></div>
+          </header>
+
+          <div id="hero-kicker" data-h5ve-layer-name="Status badge">Live HTML editing</div>
+          <h1 id="demo-title" data-h5ve-layer-name="Hero title">Build web stories, visually.</h1>
+          <p id="demo-subtitle" data-h5ve-layer-name="Hero description">
+            Turn a real HTML page into an editable canvas, then keep the clean source and responsive behavior.
+          </p>
+          <div id="demo-actions" data-h5ve-layer-name="Action buttons">
+            <div class="action-chip primary" data-h5ve-layer-name="Primary action">Open /edit</div>
+            <div class="action-chip" data-h5ve-layer-name="Secondary action">Export SVG</div>
+          </div>
+
+          <article id="demo-card" data-h5ve-layer-name="Editor preview card">
+            <div class="window-bar" data-h5ve-layer-name="Preview toolbar">
+              <div class="window-dots"><span></span><span></span><span></span></div>
+              <div class="window-path">page.html/edit</div>
+            </div>
+            <div class="editor-preview" data-h5ve-layer-name="Visual editor preview">
+              <div class="mini-canvas">
+                <div class="mini-kicker">Editable canvas</div>
+                <h2>Real HTML.<br />Visual control.</h2>
+                <div class="mini-blocks"><span></span><span></span></div>
+              </div>
+              <div class="mini-panel">
+                <strong>Style</strong>
+                <span class="mini-field"></span>
+                <span class="mini-field mini-swatch"></span>
+                <span class="mini-field"></span>
+                <span class="mini-field"></span>
+              </div>
+            </div>
+          </article>
+
+          <div id="feature-row" data-h5ve-layer-name="Feature list">
+            <div class="feature" data-h5ve-layer-name="Source feature"><strong>Source-first</strong><span>Edit the real page, not a flattened mockup.</span></div>
+            <div class="feature" data-h5ve-layer-name="Responsive feature"><strong>Responsive checks</strong><span>Validate narrow, tablet and desktop layouts.</span></div>
+            <div class="feature" data-h5ve-layer-name="Export feature"><strong>Clean handoff</strong><span>Copy PNG or editable SVG for your next tool.</span></div>
+          </div>
+          <aside class="speaker-note" data-h5ve-speaker-note>Introduce PPTedit as a visual layer on top of real HTML.</aside>
+        </section>
+
+        <section class="slide slide-two" data-theme="dark" data-h5ve-layer-name="Capabilities slide">
+          <header class="topbar" data-h5ve-layer-name="Top navigation">
+            <div class="brand"><span class="brand-mark">P</span><span>PPTedit</span></div>
+            <div class="page-label">HTML / VISUAL CANVAS &nbsp; · &nbsp; <span data-h5ve-page-number>02 / 02</span></div>
+          </header>
+          <h2 id="slide-two-title" data-h5ve-layer-name="Capabilities title">A design tool that still speaks code.</h2>
+          <p id="slide-two-copy" data-h5ve-layer-name="Capabilities description">
+            Select, edit, align and export while the document remains normal HTML, CSS and JavaScript.
+          </p>
+          <div class="capability-grid" data-h5ve-layer-name="Capability grid">
+            <div class="capability"><b>01</b><strong>Layers</strong><span>Navigate the live DOM as a readable layer tree.</span></div>
+            <div class="capability"><b>02</b><strong>Layout</strong><span>Move, resize, rotate and align real elements.</span></div>
+            <div class="capability"><b>03</b><strong>Slides</strong><span>Duplicate, reorder and hide pages in a web deck.</span></div>
+            <div class="capability"><b>04</b><strong>Export</strong><span>Send PNG or editable SVG to docs and design tools.</span></div>
+          </div>
+          <aside class="speaker-note" data-h5ve-speaker-note>Show the layer, layout, slide and export workflows.</aside>
+        </section>
+      </div>
+    </main>
+
+    <nav id="nav" data-h5ve-slide-nav aria-label="Slide navigation"></nav>
+    <div id="liveStatus" data-h5ve-live-status aria-live="polite"></div>
+
+    <script>
+      (() => {
+        const stage = document.getElementById("stage");
+        const deck = document.getElementById("deck");
+        const nav = document.getElementById("nav");
+        const status = document.getElementById("liveStatus");
+        const slides = [...deck.querySelectorAll(":scope > .slide")];
+        let index = Math.max(0, Math.min(slides.length - 1, Number(location.hash.slice(1) || 1) - 1));
+
+        function fit() {
+          if (document.body.classList.contains("h5ve-active")) return;
+          const scale = Math.min(innerWidth / 1600, innerHeight / 900);
+          stage.style.setProperty("--preview-scale", String(scale));
+        }
+
+        function render(next = index) {
+          index = Math.max(0, Math.min(slides.length - 1, Number(next) || 0));
+          window.__currentSlideIndex = index;
+          deck.style.transform = `translate3d(${-index * 1600}px, 0, 0)`;
+          slides.forEach((slide, slideIndex) => slide.setAttribute("aria-hidden", slideIndex === index ? "false" : "true"));
+          nav.querySelectorAll("button").forEach((button, buttonIndex) => button.classList.toggle("active", buttonIndex === index));
+          status.textContent = `Slide ${index + 1} of ${slides.length}`;
+          history.replaceState(null, "", `${location.pathname}${location.search}#${index + 1}`);
+          return index;
+        }
+
+        slides.forEach((_, slideIndex) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "dot";
+          button.setAttribute("aria-label", `Go to slide ${slideIndex + 1}`);
+          button.addEventListener("click", () => render(slideIndex));
+          nav.appendChild(button);
+        });
+
+        window.__pptGoSlide = render;
+        window.__pptSyncDeckTransform = render;
+
+        document.addEventListener("keydown", (event) => {
+          if (document.body.classList.contains("h5ve-active")) return;
+          if (event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+          if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(event.key)) {
+            event.preventDefault();
+            render(index + 1);
+          } else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(event.key)) {
+            event.preventDefault();
+            render(index - 1);
+          }
+        });
+
+        addEventListener("resize", fit, { passive: true });
+        fit();
+        render(index);
+      })();
+    </script>
+    <script src="../h5-editor/bootstrap.js"></script>
+  </body>
+</html>

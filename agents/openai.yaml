@@ -1,0 +1,4 @@
+interface:
+  display_name: "H5 / HTML 编辑器"
+  short_description: "修改、可视化编辑并验收 H5、HTML 与网页 Deck"
+  default_prompt: "使用 $h5-editor 修改这个 H5 或 HTML 页面，并在浏览器中验证结果。"

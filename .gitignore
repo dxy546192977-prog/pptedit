@@ -1,0 +1,14 @@
+.DS_Store
+._*
+.env
+.env.*
+!.env.example
+.playwright-mcp/
+node_modules/
+coverage/
+dist/
+*.log
+
+# Local visual checks and raw recordings
+/*.png
+demo/media/*-raw.*
