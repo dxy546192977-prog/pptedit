@@ -16,8 +16,8 @@ git clone https://github.com/dxy546192977-prog/pptedit.git ~/.codex/skills/h5-ed
 使用 $h5-editor 修改这个 H5 / HTML 页面，并在浏览器中验证结果。
 ```
 
-## MP4 演示
+## 演示
 
-[![观看 PPTedit MP4 演示](demo/media/pptedit-demo-poster.jpg)](demo/media/pptedit-demo.mp4)
+![PPTedit 自动播放演示](demo/media/pptedit-demo.gif)
 
-[点击播放 MP4 演示](demo/media/pptedit-demo.mp4)
+[观看高清 MP4](demo/media/pptedit-demo.mp4)
