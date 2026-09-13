@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PPTedit · 编辑当前页</title>
+<base href="/deck/">
+<style>
+body{margin:0;background:#121417;color:#e4e7ed;font:14px sans-serif}#stage{width:1920px;height:1080px;position:relative}#deck,.slide{width:100%;height:100%;position:relative}.slide>svg{display:block;width:100%;height:100%}#load-status{position:fixed;top:24px;left:24px}
+/* A single source page is edited here; deck structure remains managed by its host. */
+.h5ve-root [data-action="duplicate-slide"],.h5ve-root [data-action="delete-slide"]{display:none!important}
+.pptedit-chapter{margin:14px 2px 4px;font-size:10px;line-height:1.6;color:#9ea8b7}
+.h5ve-root .pptedit-page-link{display:block;width:100%;padding:6px;border:1px solid transparent;border-radius:4px;text-align:left;background:transparent;color:#b9c2ce;cursor:pointer}
+.h5ve-root .pptedit-page-link:hover{background:#ffffff06}
+.h5ve-root .pptedit-page-link[aria-current=page]{border-color:#89a8d2;color:#edf1f7;background:#ffffff05}
+.pptedit-page-link img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#080a0d;border-radius:2px}
+.pptedit-page-link span{display:block;margin-top:7px;font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+.h5ve-root .pptedit-page-link:focus-visible{outline:2px solid #adc7ee;outline-offset:1px}
+.pptedit-page-feedback{line-height:1.6;white-space:normal}
+.h5ve-root .pptedit-page-link[data-drop]{position:relative}
+.h5ve-root .pptedit-page-link[data-drop]::after{content:"";position:absolute;left:0;right:0;height:2px;background:#adc7ee;border:0;border-radius:0;pointer-events:none}
+.h5ve-root .pptedit-page-link[data-drop=before]::after{top:0}
+.h5ve-root .pptedit-page-link[data-drop=after]::after{bottom:0}
+html:not(.pptedit-ready) #stage{visibility:hidden}
+html:not(.pptedit-ready){overflow:hidden}
+</style><!-- editor-material:start -->
+<style>
+/* Shared visual language with preview-material.css; chrome only, never slide artwork. */
+html body.h5ve-active { background: #121417 !important; }
+html.h5ve-host { --h5ve-bg: #121417; }
+.h5ve-root.h5ve-root {
+  --h5ve-bg: #121417;
+  --h5ve-panel: #1a1d22;
+  --h5ve-panel-raised: #22262d;
+  --h5ve-panel-hover: #2c313a;
+  --h5ve-text: #e4e7ed;
+  --h5ve-muted: #b3bbc8;
+  --h5ve-subtle: #7f8999;
+  --h5ve-border: #ffffff12;
+  --h5ve-border-strong: #414a58;
+  --h5ve-accent: #adc7ee;
+  --h5ve-accent-soft: #30435d;
+  --h5ve-accent-border: #adc7ee80;
+  --h5ve-ink: #193251;
+  font-family: 'Roboto', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.h5ve-root :is(button, input, select, textarea) { font-family: inherit; }
+.h5ve-root :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--h5ve-accent); outline-offset: 2px; }
+.h5ve-root :is(.h5ve-sidebar, .h5ve-slides, .h5ve-elements) { background: var(--h5ve-panel); }
+.h5ve-root :is(.h5ve-side-head, .h5ve-side-foot, .h5ve-slides-head, .h5ve-elements-head) { border-color: var(--h5ve-border); }
+.h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger, .h5ve-insert-trigger, .h5ve-align-btn, .h5ve-flow-btn, .h5ve-element-control, .h5ve-element-delete, .h5ve-zoom-controls button) { border-radius: 6px; }
+.h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger) { min-height: 32px; }
+.h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger, .h5ve-elements-actions button):not(:disabled):hover { background: var(--h5ve-panel-hover); color: var(--h5ve-text); }
+.h5ve-root :is(.h5ve-btn.active, .h5ve-element-item.active, .h5ve-element-item.selected, .h5ve-flow-btn.is-active, .h5ve-align-btn.active) { background: var(--h5ve-accent-soft); color: #dbe7fa; border-color: var(--h5ve-accent-border); }
+.h5ve-root :is(.h5ve-number-control, .h5ve-dimension-control, .h5ve-elements-search, .h5ve-text-input) { border-radius: 6px; background: var(--h5ve-panel-raised); }
+.h5ve-root :is(.h5ve-context-menu, .h5ve-insert-menu, .h5ve-command-dialog, .h5ve-shortcut-dialog, .h5ve-version-dialog) { background: var(--h5ve-panel-raised); border-color: var(--h5ve-border-strong); border-radius: 10px; }
+.h5ve-root .pptedit-page-link { border-radius: 8px; padding: 8px; }
+html .h5ve-root .pptedit-page-link[aria-current=page] { background: var(--h5ve-accent-soft); color: #dbe7fa; border-color: var(--h5ve-accent-border); }
+.h5ve-root .pptedit-chapter { color: var(--h5ve-muted); }
+.h5ve-root * { scrollbar-color: #414a58 transparent; }
+.h5ve-root *::-webkit-scrollbar-thumb { background-color: #414a58; }
+.h5ve-root .h5ve-save-state[data-state=saved] { color: var(--h5ve-muted); }
+.h5ve-root .h5ve-save-state[data-state=saved] .h5ve-save-dot { background: var(--h5ve-accent); }
+html .h5ve-root .h5ve-notes { background: transparent; border: 0; border-top: 1px solid var(--h5ve-border); border-radius: 0; box-shadow: none; padding: 18px 16px; }
+html .h5ve-root .h5ve-notes textarea { color: var(--h5ve-muted); font: 14px/1.85 'Roboto', 'Noto Sans SC', 'Microsoft YaHei', sans-serif; }
+html .h5ve-root :is(.h5ve-btn,.h5ve-zoom-fit) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+/* Match the preview's icon size while keeping dense inspector controls compact. */
+.h5ve-root .h5ve-material-icon::before {
+  content: ''; display: inline-block; width: 18px; height: 18px; flex: 0 0 18px;
+  vertical-align: middle; background: currentColor;
+  mask: var(--editor-icon) center / contain no-repeat;
+}
+
+/* Generated Google Material Symbols masks; Apache-2.0, material-symbols/LICENSE. */
+html .h5ve-root [data-action="versions"] { --editor-icon: url('/deck/assets/material-symbols/history.svg');  }
+html .h5ve-root [data-action="versions"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="versions"]>svg { display:none !important; }
+html .h5ve-root [data-action="help"] { --editor-icon: url('/deck/assets/material-symbols/help.svg');  }
+html .h5ve-root [data-action="help"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="help"]>svg { display:none !important; }
+html .h5ve-root [data-action="exit"] { --editor-icon: url('/deck/assets/material-symbols/visibility.svg');  }
+html .h5ve-root [data-action="exit"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="exit"]>svg { display:none !important; }
+html .h5ve-root [data-action="insert"] { --editor-icon: url('/deck/assets/material-symbols/add.svg');  }
+html .h5ve-root [data-action="insert"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="insert"]>svg { display:none !important; }
+html .h5ve-root [data-action="commands"] { --editor-icon: url('/deck/assets/material-symbols/search.svg');  }
+html .h5ve-root [data-action="commands"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="commands"]>svg { display:none !important; }
+html .h5ve-root [data-action="screenshot"] { --editor-icon: url('/deck/assets/material-symbols/photo_camera.svg');  }
+html .h5ve-root [data-action="screenshot"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="screenshot"]>svg { display:none !important; }
+html .h5ve-root [data-action="export"] { --editor-icon: url('/deck/assets/material-symbols/content_copy.svg');  }
+html .h5ve-root [data-action="export"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="export"]>svg { display:none !important; }
+html .h5ve-root [data-action="pick"] { --editor-icon: url('/deck/assets/material-symbols/arrow_selector_tool.svg');  }
+html .h5ve-root [data-action="pick"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="pick"]>svg { display:none !important; }
+html .h5ve-root [data-action="pan-left"] { --editor-icon: url('/deck/assets/material-symbols/arrow_back.svg'); font-size:0 !important; }
+html .h5ve-root [data-action="pan-left"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="pan-left"]>svg { display:none !important; }
+html .h5ve-root [data-action="pan-right"] { --editor-icon: url('/deck/assets/material-symbols/arrow_forward.svg'); font-size:0 !important; }
+html .h5ve-root [data-action="pan-right"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="pan-right"]>svg { display:none !important; }
+html .h5ve-root [data-action="zoom-out"] { --editor-icon: url('/deck/assets/material-symbols/remove.svg'); font-size:0 !important; }
+html .h5ve-root [data-action="zoom-out"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="zoom-out"]>svg { display:none !important; }
+html .h5ve-root [data-action="zoom-in"] { --editor-icon: url('/deck/assets/material-symbols/add.svg'); font-size:0 !important; }
+html .h5ve-root [data-action="zoom-in"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="zoom-in"]>svg { display:none !important; }
+html .h5ve-root [data-action="zoom-fit"] { --editor-icon: url('/deck/assets/material-symbols/fit_screen.svg');  }
+html .h5ve-root [data-action="zoom-fit"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="zoom-fit"]>svg { display:none !important; }
+html .h5ve-root [data-action="close-help"] { --editor-icon: url('/deck/assets/material-symbols/close.svg'); font-size:0 !important; }
+html .h5ve-root [data-action="close-help"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="close-help"]>svg { display:none !important; }
+html .h5ve-root [data-action="close-versions"] { --editor-icon: url('/deck/assets/material-symbols/close.svg'); font-size:0 !important; }
+html .h5ve-root [data-action="close-versions"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="close-versions"]>svg { display:none !important; }
+html .h5ve-root [data-action="clear-layer-search"] { --editor-icon: url('/deck/assets/material-symbols/close.svg'); font-size:0 !important; }
+html .h5ve-root [data-action="clear-layer-search"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="clear-layer-search"]>svg { display:none !important; }
+html .h5ve-root [data-action="duplicate-slide"] { --editor-icon: url('/deck/assets/material-symbols/content_copy.svg');  }
+html .h5ve-root [data-action="duplicate-slide"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="duplicate-slide"]>svg { display:none !important; }
+html .h5ve-root [data-action="undo"] { --editor-icon: url('/deck/assets/material-symbols/undo.svg');  }
+html .h5ve-root [data-action="undo"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="undo"]>svg { display:none !important; }
+html .h5ve-root [data-action="redo"] { --editor-icon: url('/deck/assets/material-symbols/redo.svg');  }
+html .h5ve-root [data-action="redo"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-action="redo"]>svg { display:none !important; }
+html .h5ve-root [data-insert-kind="text"]>span:first-child { --editor-icon: url('/deck/assets/material-symbols/title.svg'); font-size:0 !important; }
+html .h5ve-root [data-insert-kind="text"]>span:first-child::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-insert-kind="text"]>span:first-child>svg { display:none !important; }
+html .h5ve-root [data-insert-kind="rectangle"]>span:first-child { --editor-icon: url('/deck/assets/material-symbols/rectangle.svg'); font-size:0 !important; }
+html .h5ve-root [data-insert-kind="rectangle"]>span:first-child::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-insert-kind="rectangle"]>span:first-child>svg { display:none !important; }
+html .h5ve-root [data-insert-kind="ellipse"]>span:first-child { --editor-icon: url('/deck/assets/material-symbols/circle.svg'); font-size:0 !important; }
+html .h5ve-root [data-insert-kind="ellipse"]>span:first-child::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-insert-kind="ellipse"]>span:first-child>svg { display:none !important; }
+html .h5ve-root [data-insert-kind="line"]>span:first-child { --editor-icon: url('/deck/assets/material-symbols/horizontal_rule.svg'); font-size:0 !important; }
+html .h5ve-root [data-insert-kind="line"]>span:first-child::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-insert-kind="line"]>span:first-child>svg { display:none !important; }
+html .h5ve-root [data-insert-kind="frame"]>span:first-child { --editor-icon: url('/deck/assets/material-symbols/filter_center_focus.svg'); font-size:0 !important; }
+html .h5ve-root [data-insert-kind="frame"]>span:first-child::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-insert-kind="frame"]>span:first-child>svg { display:none !important; }
+html .h5ve-root [data-layer-action="rename"] { --editor-icon: url('/deck/assets/material-symbols/edit.svg');  }
+html .h5ve-root [data-layer-action="rename"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-layer-action="rename"]>svg { display:none !important; }
+html .h5ve-root [data-layer-action="back"] { --editor-icon: url('/deck/assets/material-symbols/vertical_align_bottom.svg');  }
+html .h5ve-root [data-layer-action="back"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-layer-action="back"]>svg { display:none !important; }
+html .h5ve-root [data-layer-action="backward"] { --editor-icon: url('/deck/assets/material-symbols/arrow_downward.svg');  }
+html .h5ve-root [data-layer-action="backward"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-layer-action="backward"]>svg { display:none !important; }
+html .h5ve-root [data-layer-action="forward"] { --editor-icon: url('/deck/assets/material-symbols/arrow_upward.svg');  }
+html .h5ve-root [data-layer-action="forward"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-layer-action="forward"]>svg { display:none !important; }
+html .h5ve-root [data-layer-action="front"] { --editor-icon: url('/deck/assets/material-symbols/vertical_align_top.svg');  }
+html .h5ve-root [data-layer-action="front"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-layer-action="front"]>svg { display:none !important; }
+html .h5ve-root [data-align="left"] { --editor-icon: url('/deck/assets/material-symbols/align_horizontal_left.svg'); font-size:0 !important; }
+html .h5ve-root [data-align="left"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-align="left"]>svg { display:none !important; }
+html .h5ve-root [data-align="right"] { --editor-icon: url('/deck/assets/material-symbols/align_horizontal_right.svg'); font-size:0 !important; }
+html .h5ve-root [data-align="right"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-align="right"]>svg { display:none !important; }
+html .h5ve-root [data-align="h-center"] { --editor-icon: url('/deck/assets/material-symbols/align_horizontal_center.svg'); font-size:0 !important; }
+html .h5ve-root [data-align="h-center"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-align="h-center"]>svg { display:none !important; }
+html .h5ve-root [data-align="top"] { --editor-icon: url('/deck/assets/material-symbols/align_vertical_top.svg'); font-size:0 !important; }
+html .h5ve-root [data-align="top"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-align="top"]>svg { display:none !important; }
+html .h5ve-root [data-align="bottom"] { --editor-icon: url('/deck/assets/material-symbols/align_vertical_bottom.svg'); font-size:0 !important; }
+html .h5ve-root [data-align="bottom"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-align="bottom"]>svg { display:none !important; }
+html .h5ve-root [data-align="v-center"] { --editor-icon: url('/deck/assets/material-symbols/align_vertical_center.svg'); font-size:0 !important; }
+html .h5ve-root [data-align="v-center"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-align="v-center"]>svg { display:none !important; }
+html .h5ve-root [data-align="distribute-h"] { --editor-icon: url('/deck/assets/material-symbols/horizontal_distribute.svg'); font-size:0 !important; }
+html .h5ve-root [data-align="distribute-h"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-align="distribute-h"]>svg { display:none !important; }
+html .h5ve-root [data-align="distribute-v"] { --editor-icon: url('/deck/assets/material-symbols/vertical_distribute.svg'); font-size:0 !important; }
+html .h5ve-root [data-align="distribute-v"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-align="distribute-v"]>svg { display:none !important; }
+html .h5ve-root [data-text-align="left"] { --editor-icon: url('/deck/assets/material-symbols/format_align_left.svg'); font-size:0 !important; }
+html .h5ve-root [data-text-align="left"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-text-align="left"]>svg { display:none !important; }
+html .h5ve-root [data-text-align="center"] { --editor-icon: url('/deck/assets/material-symbols/format_align_center.svg'); font-size:0 !important; }
+html .h5ve-root [data-text-align="center"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-text-align="center"]>svg { display:none !important; }
+html .h5ve-root [data-text-align="right"] { --editor-icon: url('/deck/assets/material-symbols/format_align_right.svg'); font-size:0 !important; }
+html .h5ve-root [data-text-align="right"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-text-align="right"]>svg { display:none !important; }
+html .h5ve-root [data-multi-text-align="left"] { --editor-icon: url('/deck/assets/material-symbols/format_align_left.svg'); font-size:0 !important; }
+html .h5ve-root [data-multi-text-align="left"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-multi-text-align="left"]>svg { display:none !important; }
+html .h5ve-root [data-multi-text-align="center"] { --editor-icon: url('/deck/assets/material-symbols/format_align_center.svg'); font-size:0 !important; }
+html .h5ve-root [data-multi-text-align="center"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-multi-text-align="center"]>svg { display:none !important; }
+html .h5ve-root [data-multi-text-align="right"] { --editor-icon: url('/deck/assets/material-symbols/format_align_right.svg'); font-size:0 !important; }
+html .h5ve-root [data-multi-text-align="right"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-multi-text-align="right"]>svg { display:none !important; }
+html .h5ve-root [data-text-style="bold"] { --editor-icon: url('/deck/assets/material-symbols/format_bold.svg'); font-size:0 !important; }
+html .h5ve-root [data-text-style="bold"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-text-style="bold"]>svg { display:none !important; }
+html .h5ve-root [data-multi-text-style="bold"] { --editor-icon: url('/deck/assets/material-symbols/format_bold.svg'); font-size:0 !important; }
+html .h5ve-root [data-multi-text-style="bold"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-multi-text-style="bold"]>svg { display:none !important; }
+html .h5ve-root [data-text-style="italic"] { --editor-icon: url('/deck/assets/material-symbols/format_italic.svg'); font-size:0 !important; }
+html .h5ve-root [data-text-style="italic"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-text-style="italic"]>svg { display:none !important; }
+html .h5ve-root [data-multi-text-style="italic"] { --editor-icon: url('/deck/assets/material-symbols/format_italic.svg'); font-size:0 !important; }
+html .h5ve-root [data-multi-text-style="italic"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-multi-text-style="italic"]>svg { display:none !important; }
+html .h5ve-root [data-text-style="underline"] { --editor-icon: url('/deck/assets/material-symbols/format_underlined.svg'); font-size:0 !important; }
+html .h5ve-root [data-text-style="underline"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-text-style="underline"]>svg { display:none !important; }
+html .h5ve-root [data-multi-text-style="underline"] { --editor-icon: url('/deck/assets/material-symbols/format_underlined.svg'); font-size:0 !important; }
+html .h5ve-root [data-multi-text-style="underline"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-multi-text-style="underline"]>svg { display:none !important; }
+html .h5ve-root .h5ve-visibility-toggle { --editor-icon: url('/deck/assets/material-symbols/visibility.svg');  }
+html .h5ve-root .h5ve-visibility-toggle::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-visibility-toggle>svg { display:none !important; }
+html .h5ve-root .h5ve-visibility-toggle[aria-pressed="false"] { --editor-icon: url('/deck/assets/material-symbols/visibility_off.svg');  }
+html .h5ve-root .h5ve-visibility-toggle[aria-pressed="false"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-visibility-toggle[aria-pressed="false"]>svg { display:none !important; }
+html .h5ve-root [data-scrub-field="paddingX"] { --editor-icon: url('/deck/assets/material-symbols/horizontal_distribute.svg');  }
+html .h5ve-root [data-scrub-field="paddingX"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-scrub-field="paddingX"]>svg { display:none !important; }
+html .h5ve-root [data-scrub-field="paddingY"] { --editor-icon: url('/deck/assets/material-symbols/vertical_distribute.svg');  }
+html .h5ve-root [data-scrub-field="paddingY"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-scrub-field="paddingY"]>svg { display:none !important; }
+html .h5ve-root [data-scrub-field="marginX"] { --editor-icon: url('/deck/assets/material-symbols/horizontal_distribute.svg');  }
+html .h5ve-root [data-scrub-field="marginX"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-scrub-field="marginX"]>svg { display:none !important; }
+html .h5ve-root [data-scrub-field="marginY"] { --editor-icon: url('/deck/assets/material-symbols/vertical_distribute.svg');  }
+html .h5ve-root [data-scrub-field="marginY"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-scrub-field="marginY"]>svg { display:none !important; }
+html .h5ve-root [data-flow="free"] { --editor-icon: url('/deck/assets/material-symbols/dashboard.svg');  }
+html .h5ve-root [data-flow="free"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-flow="free"]>svg { display:none !important; }
+html .h5ve-root [data-flow="horizontal"] { --editor-icon: url('/deck/assets/material-symbols/view_column.svg');  }
+html .h5ve-root [data-flow="horizontal"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-flow="horizontal"]>svg { display:none !important; }
+html .h5ve-root [data-flow="vertical"] { --editor-icon: url('/deck/assets/material-symbols/view_agenda.svg');  }
+html .h5ve-root [data-flow="vertical"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-flow="vertical"]>svg { display:none !important; }
+html .h5ve-root [data-flow="grid"] { --editor-icon: url('/deck/assets/material-symbols/grid_view.svg');  }
+html .h5ve-root [data-flow="grid"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root [data-flow="grid"]>svg { display:none !important; }
+html .h5ve-root .h5ve-element-visibility { --editor-icon: url('/deck/assets/material-symbols/visibility.svg');  }
+html .h5ve-root .h5ve-element-visibility::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-visibility>svg { display:none !important; }
+html .h5ve-root .h5ve-element-visibility.is-active { --editor-icon: url('/deck/assets/material-symbols/visibility_off.svg');  }
+html .h5ve-root .h5ve-element-visibility.is-active::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-visibility.is-active>svg { display:none !important; }
+html .h5ve-root .h5ve-element-lock { --editor-icon: url('/deck/assets/material-symbols/lock_open.svg');  }
+html .h5ve-root .h5ve-element-lock::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-lock>svg { display:none !important; }
+html .h5ve-root .h5ve-element-lock.is-active { --editor-icon: url('/deck/assets/material-symbols/lock.svg');  }
+html .h5ve-root .h5ve-element-lock.is-active::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-lock.is-active>svg { display:none !important; }
+html .h5ve-root .h5ve-element-delete { --editor-icon: url('/deck/assets/material-symbols/delete.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-delete::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-delete>svg { display:none !important; }
+html .h5ve-root .h5ve-element-disclosure[aria-label="展开子元素"] { --editor-icon: url('/deck/assets/material-symbols/chevron_right.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-disclosure[aria-label="展开子元素"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-disclosure[aria-label="展开子元素"]>svg { display:none !important; }
+html .h5ve-root .h5ve-element-disclosure[aria-label="收起子元素"] { --editor-icon: url('/deck/assets/material-symbols/expand_more.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-disclosure[aria-label="收起子元素"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-disclosure[aria-label="收起子元素"]>svg { display:none !important; }
+html .h5ve-root .h5ve-elements-search { --editor-icon: url('/deck/assets/material-symbols/search.svg');  }
+html .h5ve-root .h5ve-elements-search::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-elements-search>svg { display:none !important; }
+html .h5ve-root #h5ve-f-corner-mode { --editor-icon: url('/deck/assets/material-symbols/rounded_corner.svg');  }
+html .h5ve-root #h5ve-f-corner-mode::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root #h5ve-f-corner-mode>svg { display:none !important; }
+html .h5ve-root .h5ve-rotate-handle { --editor-icon: url('/deck/assets/material-symbols/rotate_right.svg');  }
+html .h5ve-root .h5ve-rotate-handle::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-rotate-handle>svg { display:none !important; }
+html .h5ve-root .h5ve-aspect-lock[aria-pressed="true"] { --editor-icon: url('/deck/assets/material-symbols/lock.svg');  }
+html .h5ve-root .h5ve-aspect-lock[aria-pressed="true"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-aspect-lock[aria-pressed="true"]>svg { display:none !important; }
+html .h5ve-root .h5ve-aspect-lock[aria-pressed="false"] { --editor-icon: url('/deck/assets/material-symbols/lock_open.svg');  }
+html .h5ve-root .h5ve-aspect-lock[aria-pressed="false"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-aspect-lock[aria-pressed="false"]>svg { display:none !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="G"] { --editor-icon: url('/deck/assets/material-symbols/layers.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="G"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="G"]>svg { display:none !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="T"] { --editor-icon: url('/deck/assets/material-symbols/title.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="T"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="T"]>svg { display:none !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="▧"] { --editor-icon: url('/deck/assets/material-symbols/image.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="▧"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="▧"]>svg { display:none !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="◇"] { --editor-icon: url('/deck/assets/material-symbols/shapes.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="◇"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="◇"]>svg { display:none !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="□"] { --editor-icon: url('/deck/assets/material-symbols/rectangle.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="□"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="□"]>svg { display:none !important; }
+.h5ve-root [data-action="insert"]>span:first-child { display:none; }
+.h5ve-root :is(.h5ve-element-control,.h5ve-element-delete,.h5ve-element-disclosure,.h5ve-element-icon)::before { width:14px; height:14px; flex-basis:14px; }
+.h5ve-root :is(.h5ve-btn,.h5ve-insert-trigger,.h5ve-command-trigger,.h5ve-elements-actions button) { gap:8px; }
+.h5ve-root .h5ve-element-icon { border:0; background:transparent; }
+.h5ve-root :is([data-text-style],[data-multi-text-style])>:is(strong,em,u) { display:none; }
+
+</style>
+<!-- editor-material:end -->
+</head><body><p id="load-status" role="status">正在加载当前页…</p><main id="stage" data-h5ve-width="1920" data-h5ve-height="1080"><div id="deck"><section class="slide"></section></div></main><script src="/pptedit-frame.js"></script></body></html>

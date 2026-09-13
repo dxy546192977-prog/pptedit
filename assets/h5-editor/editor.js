@@ -17,6 +17,7 @@
     }
   })();
   const PARAM = new URLSearchParams(location.search);
+  const DOCUMENT_HOST = window.PPTEDIT_DOCUMENT_HOST;
   function safeStorageGet(key) {
     try {
       return localStorage.getItem(key);
@@ -42,7 +43,7 @@
   }
 
   const FORCE_ON =
-    PARAM.get("edit") === "1" || /\/edit\/?$/.test(location.pathname) || safeStorageGet("h5ve-enabled") === "1";
+    !!DOCUMENT_HOST || PARAM.get("edit") === "1" || /\/edit\/?$/.test(location.pathname) || safeStorageGet("h5ve-enabled") === "1";
   if (!FORCE_ON) return;
 
   const DEFAULT_INSPECTOR_W = 288;
@@ -135,6 +136,8 @@
   let autoSaveTimer = 0;
   let historyCommitTimer = 0;
   let autoSaveInFlight = false;
+  let changeVersion = 0;
+  let savedChangeVersion = 0;
   let autoSavePending = false;
   let commandActiveIndex = 0;
   let panelResizeRaf = 0;
@@ -418,6 +421,7 @@
   }
 
   function scheduleAutoSave() {
+    changeVersion++;
     clearTimeout(autoSaveTimer);
     setSaveState("dirty", "等待保存");
     autoSaveTimer = setTimeout(() => saveToDisk({ silent: true, quiet: true }), AUTO_SAVE_DELAY);
@@ -719,6 +723,7 @@
   }
 
   async function loadDocumentRevision() {
+    if (DOCUMENT_HOST?.loadRevision) return (state.revision = await DOCUMENT_HOST.loadRevision());
     const pagePath = canonicalDocumentPath();
     if (!pagePath.endsWith(".html")) return null;
     try {
@@ -1281,6 +1286,10 @@
     e.stopImmediatePropagation();
     const cur = getCurrentSlideIndex();
     const delta = slideNavDelta(e.key);
+    if (DOCUMENT_HOST?.navigateBy) {
+      DOCUMENT_HOST.navigateBy(delta);
+      return true;
+    }
     const target = isH5vePreviewMode()
       ? adjacentPreviewSlideIndex(getDeckSlides(), cur, delta)
       : cur + delta;
@@ -1319,6 +1328,10 @@
       idxEl.textContent = String(isH5vePreviewMode() ? Math.max(1, previewPosition + 1) : Math.min(idx + 1, slides.length || 1));
     }
     if (totalEl) totalEl.textContent = String(isH5vePreviewMode() ? previewIndexes.length : slides.length || 0);
+    if (DOCUMENT_HOST?.pageInfo) {
+      if (idxEl) idxEl.textContent = String(DOCUMENT_HOST.pageInfo.page);
+      if (totalEl) totalEl.textContent = String(DOCUMENT_HOST.pageInfo.total);
+    }
     const btn = bar.querySelector('[data-action="delete-slide"]');
     if (btn) btn.disabled = slides.length <= 1;
   }
@@ -1355,6 +1368,14 @@
 
   function updateNotesPanel() {
     if (!notesPanel || !notesTextarea) return;
+    if (DOCUMENT_HOST?.readonlyNotes) {
+      notesPanel.hidden = false;
+      const title = notesPanel.querySelector('.h5ve-notes-title');
+      if (title) title.textContent = `第 ${DOCUMENT_HOST.pageInfo.page} / ${DOCUMENT_HOST.pageInfo.total} 页讲稿 · 预览`;
+      notesTextarea.value = DOCUMENT_HOST.readonlyNotes.join('\n\n');
+      notesTextarea.readOnly = true;
+      return;
+    }
     const slides = getDeckSlides();
     if (!slides.length) {
       notesPanel.hidden = true;
@@ -1734,6 +1755,7 @@
 
   function renderSlidePanel() {
     if (!slidesPanel) return;
+    if (DOCUMENT_HOST?.renderSlidePanel) { DOCUMENT_HOST.renderSlidePanel(slidesPanel); return; }
     const deck = document.getElementById("deck");
     const slides = getDeckSlides();
     if (!deck || !slides.length) {
@@ -1871,6 +1893,7 @@
   }
 
   function isAtomicLayerElement(el) {
+    if (el?.matches?.('svg[data-pptedit-svg]')) return false;
     return el?.matches?.("img, video, canvas, svg, iframe");
   }
 
@@ -2431,6 +2454,7 @@
         const icon = document.createElement("span");
         icon.className = "h5ve-element-icon";
         icon.textContent = elementLayerIcon(el);
+        icon.dataset.materialKind = icon.textContent;
         const name = document.createElement("span");
         name.className = "h5ve-element-name";
         name.textContent = elementLayerName(el);
@@ -3620,6 +3644,7 @@
   }
 
   function canEditText(el) {
+    if (el?.namespaceURI === 'http://www.w3.org/2000/svg') return ['text', 'tspan'].includes(el.localName);
     return (
       el &&
       [
@@ -4511,6 +4536,7 @@
     };
     bindMultiColor(panelFields.color, panelFields.colorHex, (candidate, value) => {
       candidate.style.color = value;
+      if (candidate.namespaceURI === 'http://www.w3.org/2000/svg') candidate.style.fill = value;
     });
     bindMultiColor(panelFields.bg, panelFields.bgHex, (candidate, value) => {
       candidate.style.backgroundColor = value;
@@ -4593,7 +4619,132 @@
     renderSlideControls();
   }
 
+  // Keep the inspector task-oriented while retaining the existing field bindings.
+  function organizeInspector(el, { isText, isSvg }) {
+    panel.classList.add("h5ve-organized-inspector");
+    const field = (selector) => panel.querySelector(selector)?.closest(".h5ve-field");
+    const section = (id) => panel.querySelector(`[aria-labelledby="${id}"]`);
+    const header = panel.querySelector(".h5ve-panel-header");
+    header.textContent = isText ? "文字编辑" : el.localName === "image" || el.localName === "img" ? "图片编辑" : "元素编辑";
+    field("#h5ve-f-tag")?.remove();
+    if (isSvg) {
+      // CSS box properties do not describe SVG text, paths, or groups.
+      panel.querySelector("#h5ve-f-line-height")?.closest(".h5ve-number-control")?.remove();
+      panel.querySelector(".h5ve-corner-property")?.remove();
+      panel.querySelector("#h5ve-corner-detail")?.remove();
+      if (!["rect", "image", "svg"].includes(el.localName)) field("#h5ve-f-w")?.remove();
+      if (isText || el.localName === "image") section("h5ve-fill-title")?.remove();
+      if (el.localName === "image") section("h5ve-stroke-title")?.remove();
+      const positionLabel = field("#h5ve-f-x")?.querySelector("label");
+      if (positionLabel) positionLabel.textContent = "位移";
+      const strokeNote = section("h5ve-stroke-title")?.querySelector("small");
+      if (strokeNote) strokeNote.textContent = "居中";
+    }
+
+    const groups = [
+      { id: "content", title: "内容", nodes: [field("#h5ve-f-text"), field("#h5ve-f-href")] },
+      { id: "style", title: "样式", nodes: [field("#h5ve-f-fs"), section("h5ve-text-color-title"), section("h5ve-fill-title"), section("h5ve-appearance-title"), section("h5ve-stroke-title")] },
+      { id: "layout", title: "布局", nodes: [field("#h5ve-f-x"), panel.querySelector(".h5ve-layout-card") || field("#h5ve-f-w"), field(".h5ve-align-btn"), field("#h5ve-f-rotation")] },
+    ];
+    const nav = document.createElement("nav");
+    nav.className = "h5ve-inspector-nav";
+    nav.setAttribute("aria-label", "编辑工具分区");
+    header.after(nav);
+    const moved = new Set();
+    for (const group of groups) {
+      const nodes = group.nodes.filter((node) => node && !moved.has(node));
+      if (!nodes.length) continue;
+      const wrapper = document.createElement("section");
+      wrapper.className = "h5ve-tool-group";
+      wrapper.id = `h5ve-tools-${group.id}`;
+      wrapper.setAttribute("aria-labelledby", `${wrapper.id}-title`);
+      const title = document.createElement("h3");
+      title.id = `${wrapper.id}-title`;
+      title.textContent = group.title;
+      wrapper.append(title);
+      nodes.forEach((node) => { wrapper.append(node); moved.add(node); });
+      panel.append(wrapper);
+      const jump = document.createElement("button");
+      jump.type = "button";
+      jump.textContent = group.title;
+      jump.setAttribute("aria-controls", wrapper.id);
+      jump.addEventListener("click", () => {
+        wrapper.scrollIntoView({ block: "start", behavior: "auto" });
+        wrapper.querySelector("textarea, input, select, button")?.focus({ preventScroll: true });
+      });
+      nav.append(jump);
+    }
+    // Sliders supplement exact numeric entry; both use the same editing path.
+    for (const [id, label, min, max] of [["fs", "字号", 8, 200], ["opacity", "不透明度", 0, 100]]) {
+      const input = panel.querySelector(`#h5ve-f-${id}`);
+      if (!input) continue;
+      const row = document.createElement("div");
+      row.className = "h5ve-value-slider";
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = String(min);
+      slider.max = String(Math.max(max, Number(input.value) || 0));
+      slider.step = "1";
+      slider.value = input.value;
+      slider.setAttribute("aria-label", `${label}滑杆`);
+      const output = document.createElement("output");
+      const sync = () => {
+        slider.max = String(Math.max(max, Number(input.value) || 0));
+        slider.value = input.value;
+        output.textContent = `${input.value}${id === "opacity" ? "%" : " px"}`;
+      };
+      slider.addEventListener("input", () => {
+        input.value = slider.value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      slider.addEventListener("change", () => pushHistory({ label: `调整${label}` }));
+      input.addEventListener("input", sync);
+      sync();
+      row.append(slider, output);
+      const anchor = id === "fs" ? input.closest(".h5ve-text-metric-row") : input.closest(".h5ve-appearance-grid");
+      anchor?.after(row);
+    }
+    const opacityLabel = panel.querySelector('[data-scrub-field="opacity"]');
+    if (opacityLabel) opacityLabel.textContent = "不透明度";
+    panel.querySelector("#h5ve-f-opacity")?.setAttribute("aria-label", "不透明度百分比");
+
+    // Reuse this slide's colors instead of imposing a new palette on the artwork.
+    const palette = new Set();
+    const slide = el.closest(".slide");
+    slide?.querySelectorAll("text, tspan, rect, path, circle, ellipse, polygon, line, h1, h2, p").forEach((node) => {
+      const style = getComputedStyle(node);
+      const value = node.namespaceURI === "http://www.w3.org/2000/svg" ? style.fill : style.color;
+      if (value && value !== "none" && !value.startsWith("url(") && !isTransparentCssColor(value)) palette.add(rgbToHex(value));
+    });
+    if (palette.size) panel.querySelectorAll("[data-color-control]").forEach((control) => {
+      const input = control.querySelector('input[type="color"]');
+      if (!input) return;
+      const swatches = document.createElement("div");
+      swatches.className = "h5ve-slide-palette";
+      swatches.setAttribute("role", "group");
+      swatches.setAttribute("aria-label", "当前页配色");
+      const label = document.createElement("span");
+      label.textContent = "本页";
+      swatches.append(label);
+      [...palette].slice(0, 8).forEach((color) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.style.setProperty("--swatch", color);
+        button.title = `使用 ${color.toUpperCase()}`;
+        button.setAttribute("aria-label", button.title);
+        button.addEventListener("click", () => {
+          input.value = color;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          pushHistory({ label: "使用本页配色" });
+        });
+        swatches.append(button);
+      });
+      control.after(swatches);
+    });
+  }
+
   function fillPanel(el) {
+    panel.classList.remove("h5ve-organized-inspector");
     panel.classList.remove("h5ve-panel-readonly");
     if (!el) {
       panel.innerHTML = `
@@ -4614,10 +4765,11 @@
     }
 
     const isText = canEditText(el);
+    const isSvg = el.namespaceURI === "http://www.w3.org/2000/svg";
 
     const t = parseTransform(el);
     const cs = getComputedStyle(el);
-    const isFrame = isFrameContainer(el);
+    const isFrame = !isSvg && isFrameContainer(el);
     const isStandaloneTextWidth = !isFrame && isStandaloneTextWidthElement(el, cs);
     const canWidthMode = canUseWidthMode(el);
     const flowMode = isFrame ? frameFlowMode(el) : "free";
@@ -4650,8 +4802,8 @@
     const w = parseFloat(cs.width) || 0;
     const h = parseFloat(cs.height) || 0;
     const fs = parseFloat(getInlineOrComputed(el, "fontSize")) || 16;
-    const textColorValue = getInlineOrComputed(el, "color");
-    const backgroundColorValue = getInlineOrComputed(el, "backgroundColor");
+    const textColorValue = getInlineOrComputed(el, isSvg ? "fill" : "color");
+    const backgroundColorValue = getInlineOrComputed(el, isSvg ? "fill" : "backgroundColor");
     const color = rgbToHex(textColorValue);
     const bg = rgbToHex(backgroundColorValue);
     const parsedOpacity = parseFloat(getInlineOrComputed(el, "opacity"));
@@ -4661,11 +4813,11 @@
     const fontWeight = numericFontWeight(cs.fontWeight);
     const fontItalic = cs.fontStyle === "italic" || cs.fontStyle === "oblique";
     const textUnderlined = cs.textDecorationLine.includes("underline");
-    const textAlign = cs.textAlign || "left";
+    const textAlign = isSvg ? ({ start: "left", middle: "center", end: "right" }[cs.textAnchor] || "left") : cs.textAlign || "left";
     const lineHeight = Number.isFinite(parseFloat(cs.lineHeight)) ? parseFloat(cs.lineHeight) / Math.max(fs, 1) : 1.2;
     const letterSpacing = Number.isFinite(parseFloat(cs.letterSpacing)) ? parseFloat(cs.letterSpacing) : 0;
-    const borderWidth = parseFloat(cs.borderTopWidth) || 0;
-    const borderColorValue = cs.borderTopColor;
+    const borderWidth = parseFloat(isSvg ? cs.strokeWidth : cs.borderTopWidth) || 0;
+    const borderColorValue = isSvg ? cs.stroke : cs.borderTopColor;
     const borderColor = rgbToHex(borderColorValue);
     const cornerRadii = {
       tl: parseFloat(cs.borderTopLeftRadius) || 0,
@@ -4678,15 +4830,15 @@
       (value) => Math.abs(value - cornerRadiusValues[0]) < 0.01,
     );
     const borderRadius = hasUniformCornerRadius ? cornerRadiusValues[0] : null;
-    const fillEnabled = !isTransparentCssColor(backgroundColorValue);
-    const strokeEnabled = borderWidth > 0 && cs.borderTopStyle !== "none" && !isTransparentCssColor(borderColorValue);
+    const fillEnabled = backgroundColorValue !== "none" && !isTransparentCssColor(backgroundColorValue);
+    const strokeEnabled = borderWidth > 0 && (isSvg ? cs.stroke !== "none" : cs.borderTopStyle !== "none") && !isTransparentCssColor(borderColorValue);
 
     panel.innerHTML = `
       <div class="h5ve-panel-header">属性</div>
       <div class="h5ve-field"><label>元素</label><input type="text" id="h5ve-f-tag" readonly value="${escapeHtmlText(labelFor(el))}"></div>
       ${
         isText
-          ? `<div class="h5ve-field"><label>文案</label><textarea id="h5ve-f-text">${escapeHtmlText(el.innerText || "")}</textarea></div>
+          ? `<div class="h5ve-field"><label>文案</label><textarea id="h5ve-f-text">${escapeHtmlText(el.innerText ?? el.textContent ?? "")}</textarea></div>
         <div class="h5ve-field"><label>文字样式</label>
           <div class="h5ve-text-style-row" role="group" aria-label="文字样式">
             <button type="button" data-text-style="bold" class="${fontWeight >= 600 ? "is-active" : ""}" aria-pressed="${fontWeight >= 600}" title="粗体"><strong>B</strong></button>
@@ -4871,6 +5023,8 @@
       </section>
     `;
 
+    organizeInspector(el, { isText, isSvg });
+
     panelFields = {
       text: panel.querySelector("#h5ve-f-text"),
       x: panel.querySelector("#h5ve-f-x"),
@@ -4947,7 +5101,8 @@
     };
 
     panelFields.text?.addEventListener("input", () => {
-      el.innerText = panelFields.text.value;
+      if (el.namespaceURI === 'http://www.w3.org/2000/svg') el.textContent = panelFields.text.value;
+      else el.innerText = panelFields.text.value;
       syncPanelGeometry(el);
       scheduleSelectionBox();
       markDirty();
@@ -5046,24 +5201,30 @@
     });
     bindColorControl(panelFields.color, panelFields.colorHex, (value) => {
       el.style.color = value;
+      if (el.namespaceURI === 'http://www.w3.org/2000/svg') el.style.fill = value;
       markDirty();
     });
     bindColorControl(panelFields.bg, panelFields.bgHex, (value) => {
-      if (panelFields.fillToggle?.getAttribute("aria-pressed") !== "false") el.style.backgroundColor = value;
+      if (panelFields.fillToggle?.getAttribute("aria-pressed") !== "false") {
+        el.style[isSvg ? "fill" : "backgroundColor"] = value;
+      }
       scheduleSelectionBox();
       markDirty();
     });
     bindColorControl(panelFields.borderColor, panelFields.borderColorHex, (value) => {
       if (panelFields.strokeToggle?.getAttribute("aria-pressed") !== "false") {
-        el.style.borderStyle = "solid";
-        el.style.borderColor = value;
+        if (isSvg) el.style.stroke = value;
+        else {
+          el.style.borderStyle = "solid";
+          el.style.borderColor = value;
+        }
       }
       scheduleSelectionBox();
       markDirty();
     });
     panelFields.fillToggle?.addEventListener("click", () => {
       const visible = panelFields.fillToggle.getAttribute("aria-pressed") !== "true";
-      el.style.backgroundColor = visible ? panelFields.bg.value : "transparent";
+      el.style[isSvg ? "fill" : "backgroundColor"] = visible ? panelFields.bg.value : isSvg ? "none" : "transparent";
       setVisibilityToggleState(panelFields.fillToggle, panelFields.fillToggle.closest("[data-color-control]"), visible, {
         hide: "隐藏填充",
         show: "显示填充",
@@ -5076,9 +5237,14 @@
       const visible = panelFields.strokeToggle.getAttribute("aria-pressed") !== "true";
       const currentWidth = Math.max(0, Number(panelFields.borderWidth?.value) || 0);
       if (visible && currentWidth === 0 && panelFields.borderWidth) panelFields.borderWidth.value = "1";
-      el.style.borderStyle = visible ? "solid" : "none";
-      el.style.borderWidth = `${visible ? Math.max(1, currentWidth) : currentWidth}px`;
-      el.style.borderColor = panelFields.borderColor?.value || borderColor;
+      if (isSvg) {
+        el.style.stroke = visible ? panelFields.borderColor?.value || borderColor : "none";
+        el.style.strokeWidth = `${visible ? Math.max(1, currentWidth) : currentWidth}px`;
+      } else {
+        el.style.borderStyle = visible ? "solid" : "none";
+        el.style.borderWidth = `${visible ? Math.max(1, currentWidth) : currentWidth}px`;
+        el.style.borderColor = panelFields.borderColor?.value || borderColor;
+      }
       setVisibilityToggleState(panelFields.strokeToggle, panelFields.strokeToggle.closest("[data-color-control]"), visible, {
         hide: "隐藏描边",
         show: "显示描边",
@@ -5089,8 +5255,13 @@
     });
     panelFields.borderWidth?.addEventListener("input", () => {
       const value = Math.max(0, Number(panelFields.borderWidth.value) || 0);
-      el.style.borderStyle = value > 0 ? "solid" : "none";
-      el.style.borderWidth = `${value}px`;
+      if (isSvg) {
+        el.style.strokeWidth = `${value}px`;
+        el.style.stroke = value > 0 ? panelFields.borderColor?.value || borderColor : "none";
+      } else {
+        el.style.borderStyle = value > 0 ? "solid" : "none";
+        el.style.borderWidth = `${value}px`;
+      }
       setVisibilityToggleState(panelFields.strokeToggle, panelFields.strokeToggle?.closest("[data-color-control]"), value > 0, {
         hide: "隐藏描边",
         show: "显示描边",
@@ -5156,7 +5327,8 @@
     panel.querySelectorAll("[data-text-align]").forEach((button) => {
       button.addEventListener("click", () => {
         const align = button.dataset.textAlign;
-        el.style.textAlign = align;
+        if (isSvg) el.style.textAnchor = { left: "start", center: "middle", right: "end" }[align];
+        else el.style.textAlign = align;
         panel.querySelectorAll("[data-text-align]").forEach((candidate) => {
           const active = candidate === button;
           candidate.classList.toggle("is-active", active);
@@ -6197,6 +6369,14 @@
   }
 
   function startTextEdit(el, pointerEvent) {
+    if (el?.namespaceURI === 'http://www.w3.org/2000/svg') {
+      if (canEditText(el) && !isElementLocked(el) && !isElementHidden(el)) {
+        fillPanel(el);
+        panelFields.text?.focus();
+        showToast('在右侧文案框编辑 SVG 文字');
+      }
+      return;
+    }
     if (!el || !canEditText(el) || isElementLocked(el) || isElementHidden(el)) return;
     if (el.dataset.h5veEditing === "true") {
       el.focus({ preventScroll: true });
@@ -6309,8 +6489,14 @@
     return url.toString();
   }
 
-  function exitEditor(event) {
+  async function exitEditor(event) {
     event?.preventDefault();
+    if (DOCUMENT_HOST?.onPreview) {
+      endAnyTextEditing();
+      while (autoSaveInFlight) await new Promise(resolve => setTimeout(resolve, 25));
+      if (await saveToDisk({ silent: true, quiet: true })) DOCUMENT_HOST.onPreview();
+      return;
+    }
     safeStorageRemove("h5ve-enabled");
     location.assign(previewUrl());
   }
@@ -6325,11 +6511,12 @@
     autoSaveInFlight = true;
     autoSavePending = false;
     showAutoSaveStatus(false);
+    const savingVersion = changeVersion;
     const html = serializeDocument();
     const path = canonicalDocumentPath();
     try {
       if (state.revisionPromise) await state.revisionPromise;
-      const res = await fetch(SAVE_ENDPOINT_URL, {
+      const res = DOCUMENT_HOST?.save ? await DOCUMENT_HOST.save({ html, revision: state.revision }) : await fetch(SAVE_ENDPOINT_URL, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -6343,6 +6530,7 @@
         throw error;
       }
       state.revision = data.revision || state.revision;
+      savedChangeVersion = savingVersion;
       if (!silent) pushHistory({ autoSave: false });
       renderSlidePanel();
       clearRecoveryDraft();
@@ -6665,6 +6853,7 @@
   }
 
   async function buildCurrentSlideSvg() {
+    if (DOCUMENT_HOST?.buildSvg) { endAnyTextEditing(); return DOCUMENT_HOST.buildSvg(); }
     endAnyTextEditing();
     const slide = currentSlide();
     const stage = getStage() || slide || document.documentElement;
@@ -7711,8 +7900,8 @@
         <div class="h5ve-side-head">
           <div class="h5ve-brand-row">
             <div class="h5ve-brand-stack">
-              <span class="h5ve-brand">PPTedit</span>
-              <span class="h5ve-brand-subtitle">本地编辑工作台</span>
+              <span class="h5ve-brand">编辑工具</span>
+              <span class="h5ve-brand-subtitle">PPTedit</span>
             </div>
             <div class="h5ve-head-tools">
               <button type="button" class="h5ve-icon-btn" data-action="versions" aria-label="版本与恢复" title="版本与恢复" data-tooltip="版本与恢复">
@@ -7747,12 +7936,11 @@
           </div>
           <nav class="h5ve-selection-path" aria-label="选中元素层级"></nav>
           <div class="h5ve-actions">
-            <button type="button" class="h5ve-btn primary h5ve-screenshot-action" data-action="screenshot" title="复制当前页 2× 高清 PNG，可直接粘贴到文档">
+            <button type="button" class="h5ve-btn h5ve-screenshot-action" data-action="screenshot" title="复制当前页 2× 高清 PNG，可直接粘贴到文档">
               <svg class="h5ve-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M8 6l1.3-2h5.4L16 6"/><circle cx="12" cy="12.5" r="3.2"/></svg>
               <span data-screenshot-label>复制当前页截图</span>
             </button>
             <button type="button" class="h5ve-btn" data-action="export" title="复制当前页原生矢量 SVG，到 Figma 直接粘贴即可编辑">复制 SVG</button>
-            <button type="button" class="h5ve-btn h5ve-mode-action active" data-action="pick" title="选择 / 预览 · ⇧D">选择模式</button>
           </div>
         </div>
         <div id="h5ve-panel" class="h5ve-panel-body">
@@ -9375,6 +9563,25 @@
     }
     document.fonts?.ready.then(settleInitialCanvasLayout).catch(() => {});
     pushHistory({ autoSave: false, label: "打开页面" });
+    const documentApi = {
+      preview: () => exitEditor(), save: () => saveToDisk(), currentMarkup: serializeDocument,
+      saveForNavigation: async () => {
+        endAnyTextEditing();
+        while (autoSaveInFlight) await new Promise(resolve => setTimeout(resolve, 25));
+        if (changeVersion === savedChangeVersion) return true;
+        clearTimeout(autoSaveTimer);
+        return saveToDisk({ silent: true, quiet: true });
+      }
+    };
+    // Embedded documents must not expose the unstyled, full-size source canvas.
+    if (DOCUMENT_HOST?.ready) {
+      const ready = () => requestAnimationFrame(() => {
+        applyCanvasScale();
+        DOCUMENT_HOST.ready(documentApi);
+      });
+      if (link.sheet) ready();
+      else link.addEventListener("load", ready, { once: true });
+    }
     state.recoveryDraft = readRecoveryDraft();
     safeStorageSet("h5ve-enabled", "1");
     if (state.recoveryDraft) {

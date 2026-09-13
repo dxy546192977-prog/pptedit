@@ -50,6 +50,10 @@ description: 创建、修改、调试和验收 H5、HTML 单页、落地页与�
 
 ## 可视化编辑器
 
+### 网页 Deck 的编辑 / SVG 预览双模式
+
+当网页 Deck 同时具有旧版可视化编辑界面和 SVG 确认稿时，保留旧版作为「编辑模式」，以当前 SVG 确认稿作为「预览模式」，提供明确的双向切换入口。沿用用户认可的预览布局，不用预览页替代或删除编辑能力。具体状态同步与验收要求见 [references/deck-modes.md](references/deck-modes.md)；创建或调整这类双模式 Deck 时读取。此约定不要求普通 H5 或原生 PPTX 增加 SVG 预览。
+
 只有在项目已接入浏览器编辑器，或用户明确要求可视化编辑时，才读取 [references/visual-editor-adapter.md](references/visual-editor-adapter.md)。
 
 本 Skill 的可复用编辑器资源位于 `assets/h5-editor/`。接入具有 `public/` 目录的宿主项目时，先查看差异，再显式安装：
@@ -61,7 +65,17 @@ node scripts/install-h5-editor.mjs --target <project-root> --apply
 
 优先使用 `{page-url}?edit=1`，避免改变相对资源的解析基准。Next.js 中显式 `.html` 页面可使用安装器提供的 `{page-url}/edit` 临时跳转入口；目录型页面需由宿主为具体路径添加 redirect。写盘是宿主选配能力，必须只在本地开发环境中开放受限路径。
 
+## 讲稿语音试听
+
+用户要求用自然人声试听网页 Deck 讲稿、检查演讲节奏时，读取 [references/narration.md](references/narration.md)，使用本地开源模型生成音频，并将播放控件接入实际预览页。
+
+## 参考版式修改
+
+用户要求上传参考图后由 Codex 修改当前页时，读取 [references/layout-reference.md](references/layout-reference.md)，接入本地后台与当前 SVG 源文件。
+
 ## 完成标准
+
+当用户要求 skill 与当前预览联动更新时，将同一轮反馈同时落实到实际预览页面的源码与 skill 的可复用规则；若涉及本 skill 提供的运行时资源，也同步相应资源。同步工作区 skill 与本地已安装副本。只有文档修改不能算完成页面更新，只有页面补丁也不能算完成 skill 更新。确认实际入口及生成关系，避免覆盖文稿内容或修改归档版本；能访问浏览器时刷新并验收，否则明确说明文件已更新、当前标签页仍需刷新。此约定是执行工作流，不代表静态页面或 skill 本身具备自动热更新能力。
 
 - 修改了真实源文件，并保留用户已有改动。
 - 目标视口和关键交互正常。

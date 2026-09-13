@@ -6,7 +6,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "check": "node --check assets/h5-editor/bootstrap.js && node --check assets/h5-editor/editor.js && node --check demo/server.mjs && node --check scripts/install-h5-editor.mjs && node --check scripts/test-install-h5-editor.mjs && node --check scripts/test-demo-server.mjs",
+    "check": "node --check assets/h5-editor/bootstrap.js && node --check assets/h5-editor/editor.js && node --check assets/narration/player.js && node --check scripts/install-narration.mjs && node --check demo/server.mjs && node --check scripts/install-h5-editor.mjs && node --check scripts/test-install-h5-editor.mjs && node --check scripts/test-demo-server.mjs",
     "demo": "node demo/server.mjs",
     "test": "node scripts/test-install-h5-editor.mjs && node scripts/test-demo-server.mjs"
   },

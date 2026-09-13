@@ -1,0 +1,86 @@
+/* The tools share a quiet right rail; the slide and notes use the central column. */
+@media (min-width: 701px) {
+  body.material-preview main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 200px;
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-width: 0;
+    min-height: 0;
+  }
+  body.material-preview .stage-area { grid-column: 1; grid-row: 1; margin: 16px 20px 8px; }
+  body.material-preview .notes { grid-column: 1; grid-row: 2; margin: 0 20px 20px; }
+  body.material-preview .bottom.unified-actions {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 16px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 24px 16px;
+    border: 0;
+    border-left: 1px solid #ffffff10;
+    border-radius: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #434b58 transparent;
+    background: transparent;
+  }
+  body.material-preview .unified-actions .page-navigation { justify-content: space-between; gap: 2px; margin: 0; }
+  body.material-preview .unified-actions .page-navigation button { width: 36px; height: 36px; }
+  body.material-preview .unified-actions .page-navigation .counter { min-width: 56px; }
+  body.material-preview .unified-actions .narration-player {
+    order: 0;
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+    padding: 16px 0;
+    border: 0;
+    border-block: 1px solid #ffffff10;
+  }
+  body.material-preview .unified-actions .narration-controls { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+  body.material-preview .unified-actions .narration-controls #narration-play { width: 100%; padding: 0 12px; }
+  body.material-preview .unified-actions .narration-timeline { flex: 0 0 auto; width: 100%; gap: 4px; }
+  body.material-preview .unified-actions .narration-controls>select[data-rate] { width: 100%; max-width: none; height: 36px; padding: 0 8px; }
+  body.material-preview .unified-actions :is(#copy-svg, #layout-reference-open) { width: 100%; justify-content: flex-start; padding: 0 12px; }
+  body.material-preview .unified-actions .action-overflow { width: 100%; }
+  body.material-preview .unified-actions .action-overflow>button { width: 100%; justify-content: space-between; padding: 0 12px; }
+  body.material-preview .unified-actions .action-overflow>button { display: none; }
+  body.material-preview .unified-actions .action-menu[hidden] { display: block; }
+  /* Inline disclosures stay reachable even when a short window scrolls the rail. */
+  body.material-preview .unified-actions :is(.action-menu, .narration-options) {
+    position: static;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    margin-top: 8px;
+    padding: 6px 0;
+    border: 0;
+    border-top: 1px solid #ffffff12;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  body.material-preview .unified-actions .action-menu>button { padding: 10px 8px; gap: 8px; min-height: 40px; }
+  body.material-preview .unified-actions .menu-shortcuts { margin: 6px 0 0; padding: 10px 8px 4px; white-space: normal; line-height: 1.9; }
+  body.material-preview .unified-actions #copy-status:not(:empty) { order: 0; flex: 0 0 auto; width: 100%; overflow-wrap: anywhere; }
+}
+@media (min-width: 701px) and (max-width: 1100px) {
+  body.material-preview main { grid-template-columns: minmax(0, 1fr) 176px; }
+  body.material-preview .bottom.unified-actions { padding: 20px 10px; }
+  body.material-preview .stage-area { margin-inline: 12px; }
+  body.material-preview .notes { margin-inline: 12px; padding-inline: 12px; }
+}
+@media (min-width: 651px) and (max-width: 900px) {
+  body.material-preview .app { display: block; }
+  body.material-preview .sidebar { display: none; }
+  body.material-preview main { height: 100%; }
+}

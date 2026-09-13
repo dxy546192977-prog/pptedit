@@ -1,0 +1,46 @@
+/* Shared visual language with preview-material.css; chrome only, never slide artwork. */
+html body.h5ve-active { background: #121417 !important; }
+html.h5ve-host { --h5ve-bg: #121417; }
+.h5ve-root.h5ve-root {
+  --h5ve-bg: #121417;
+  --h5ve-panel: #1a1d22;
+  --h5ve-panel-raised: #22262d;
+  --h5ve-panel-hover: #2c313a;
+  --h5ve-text: #e4e7ed;
+  --h5ve-muted: #b3bbc8;
+  --h5ve-subtle: #7f8999;
+  --h5ve-border: #ffffff12;
+  --h5ve-border-strong: #414a58;
+  --h5ve-accent: #adc7ee;
+  --h5ve-accent-soft: #30435d;
+  --h5ve-accent-border: #adc7ee80;
+  --h5ve-ink: #193251;
+  font-family: 'Roboto', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.h5ve-root :is(button, input, select, textarea) { font-family: inherit; }
+.h5ve-root :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--h5ve-accent); outline-offset: 2px; }
+.h5ve-root :is(.h5ve-sidebar, .h5ve-slides, .h5ve-elements) { background: var(--h5ve-panel); }
+.h5ve-root :is(.h5ve-side-head, .h5ve-side-foot, .h5ve-slides-head, .h5ve-elements-head) { border-color: var(--h5ve-border); }
+.h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger, .h5ve-insert-trigger, .h5ve-align-btn, .h5ve-flow-btn, .h5ve-element-control, .h5ve-element-delete, .h5ve-zoom-controls button) { border-radius: 6px; }
+.h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger) { min-height: 32px; }
+.h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger, .h5ve-elements-actions button):not(:disabled):hover { background: var(--h5ve-panel-hover); color: var(--h5ve-text); }
+.h5ve-root :is(.h5ve-btn.active, .h5ve-element-item.active, .h5ve-element-item.selected, .h5ve-flow-btn.is-active, .h5ve-align-btn.active) { background: var(--h5ve-accent-soft); color: #dbe7fa; border-color: var(--h5ve-accent-border); }
+.h5ve-root :is(.h5ve-number-control, .h5ve-dimension-control, .h5ve-elements-search, .h5ve-text-input) { border-radius: 6px; background: var(--h5ve-panel-raised); }
+.h5ve-root :is(.h5ve-context-menu, .h5ve-insert-menu, .h5ve-command-dialog, .h5ve-shortcut-dialog, .h5ve-version-dialog) { background: var(--h5ve-panel-raised); border-color: var(--h5ve-border-strong); border-radius: 10px; }
+.h5ve-root .pptedit-page-link { border-radius: 8px; padding: 8px; }
+html .h5ve-root .pptedit-page-link[aria-current=page] { background: var(--h5ve-accent-soft); color: #dbe7fa; border-color: var(--h5ve-accent-border); }
+.h5ve-root .pptedit-chapter { color: var(--h5ve-muted); }
+.h5ve-root * { scrollbar-color: #414a58 transparent; }
+.h5ve-root *::-webkit-scrollbar-thumb { background-color: #414a58; }
+.h5ve-root .h5ve-save-state[data-state=saved] { color: var(--h5ve-muted); }
+.h5ve-root .h5ve-save-state[data-state=saved] .h5ve-save-dot { background: var(--h5ve-accent); }
+html .h5ve-root .h5ve-notes { background: transparent; border: 0; border-top: 1px solid var(--h5ve-border); border-radius: 0; box-shadow: none; padding: 18px 16px; }
+html .h5ve-root .h5ve-notes textarea { color: var(--h5ve-muted); font: 14px/1.85 'Roboto', 'Noto Sans SC', 'Microsoft YaHei', sans-serif; }
+html .h5ve-root :is(.h5ve-btn,.h5ve-zoom-fit) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+/* Match the preview's icon size while keeping dense inspector controls compact. */
+.h5ve-root .h5ve-material-icon::before {
+  content: ''; display: inline-block; width: 18px; height: 18px; flex: 0 0 18px;
+  vertical-align: middle; background: currentColor;
+  mask: var(--editor-icon) center / contain no-repeat;
+}

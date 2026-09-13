@@ -1,0 +1,57 @@
+.layout-reference-dialog{width:min(560px,90vw);max-height:85vh;overflow:auto;background:#111b15;color:#e7eee9;border:1px solid #42634e;border-radius:12px;padding:24px}
+/* Keep system scrolling, with quiet dark scrollbars on the dialog and its fields. */
+.layout-reference-dialog{overscroll-behavior:contain;scrollbar-gutter:stable}
+.layout-reference-dialog,.layout-reference-dialog textarea{
+  color-scheme:dark;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(196,211,202,.3) transparent;
+}
+.layout-reference-dialog:hover,.layout-reference-dialog:focus-within{scrollbar-color:rgba(196,211,202,.48) transparent}
+@supports selector(::-webkit-scrollbar){
+  /* Standard non-auto values override these pseudo-elements in Chromium. */
+  .layout-reference-dialog,.layout-reference-dialog:hover,.layout-reference-dialog:focus-within,.layout-reference-dialog textarea{scrollbar-width:auto;scrollbar-color:auto}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar{width:10px;height:10px}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-track{background:transparent;margin-block:12px}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-thumb{background:rgba(196,211,202,.3);background-clip:padding-box;border:3px solid transparent;border-radius:999px;min-height:40px}
+  :is(.layout-reference-dialog:hover,.layout-reference-dialog:focus-within,.layout-reference-dialog textarea:hover)::-webkit-scrollbar-thumb{background-color:rgba(196,211,202,.48)}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-thumb:hover{background-color:rgba(196,211,202,.65)}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-thumb:active{background-color:rgba(196,211,202,.8)}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-button{display:none;width:0;height:0}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-corner{background:transparent}
+}
+@media(forced-colors:active){
+  .layout-reference-dialog,.layout-reference-dialog textarea{scrollbar-color:auto;scrollbar-width:auto}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar{all:revert}
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-track,
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-thumb,
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-button,
+  :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-corner{all:revert}
+}
+.layout-reference-dialog::backdrop{background:#0009}
+.layout-reference-dialog header,.layout-reference-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.layout-reference-dialog label{display:flex;flex-direction:column;gap:8px;margin:16px 0}
+.layout-reference-dialog textarea{font:inherit;background:#09110c;color:inherit;border:1px solid #42634e;padding:10px;resize:vertical}
+.layout-reference-dialog [data-preview]{max-width:100%;max-height:260px;object-fit:contain;background:white}
+.layout-reference-hint,.layout-reference-dialog [data-status]{font-size:13px;line-height:1.6;color:#a9c4b1}
+.layout-reference-dialog [data-confirm]{background:#17562e;color:white}
+.layout-reference-dialog .layout-design-switch{flex-direction:row;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer}
+.layout-design-switch input{appearance:none;width:36px;height:20px;border-radius:12px;background:#58625b;position:relative;flex:none;cursor:pointer}
+.layout-design-switch input:checked{background:#029d4c}
+.layout-design-switch input:before{content:'';position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:white}
+.layout-design-switch input:checked:before{transform:translateX(16px)}
+.layout-design-switch input:focus-visible{outline:2px solid white;outline-offset:3px}
+.layout-reference-source [data-paste]{padding:24px;text-align:center;border:1px dashed #61806b;border-radius:8px;color:#d0e5d7;line-height:1.8;outline-offset:3px}
+.layout-reference-source input{background:#09110c;color:inherit;border:1px solid #42634e;padding:10px;font:inherit;min-width:0}
+.layout-reference-dialog details{margin:14px 0;color:#a9c4b1;font-size:13px}
+.layout-reference-dialog summary{cursor:pointer}
+.layout-history{border-top:1px solid #42634e;padding-top:16px;margin-top:24px!important}
+.layout-history details{padding:12px;border:1px solid #314439;border-radius:6px}
+.layout-history p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.layout-history-images{display:grid;gap:12px}
+.layout-history-images figure{margin:0}.layout-history-images img{width:100%;height:auto;margin-top:6px}.layout-history-images figcaption{font-weight:bold;color:#e7eee9}
+.layout-job-notice{position:fixed;right:20px;bottom:20px;z-index:1000;display:flex;align-items:center;gap:12px;box-sizing:border-box;max-width:min(520px,calc(100vw - 32px));padding:12px 16px;border:1px solid #42634e;border-radius:12px;background:#111b15;color:#e7eee9;box-shadow:0 8px 28px #0004;color-scheme:dark}
+.layout-job-notice[hidden],.layout-job-notice [hidden]{display:none!important}
+.layout-job-notice p{margin:0;min-width:0;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.layout-job-notice button{flex:none;font:inherit;cursor:pointer}
+.layout-job-notice[data-state="error"]{border-color:#a97956}
+@media(max-width:600px){.layout-job-notice{right:16px;bottom:12px;flex-wrap:wrap}}

@@ -8,6 +8,8 @@ node_modules/
 coverage/
 dist/
 *.log
+__pycache__/
+*.pyc
 
 # Local visual checks and raw recordings
 /*.png

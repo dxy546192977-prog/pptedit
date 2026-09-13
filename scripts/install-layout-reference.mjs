@@ -1,0 +1,22 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+const [htmlPath,configPath]=process.argv.slice(2);
+if(!htmlPath||!configPath)throw Error('Usage: node install-layout-reference.mjs <index.html> <bridge-config.json>');
+const config=JSON.parse((await fs.readFile(configPath,'utf8')).replace(/^\uFEFF/,''));
+const root=path.dirname(path.resolve(htmlPath));
+const assets=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../assets');
+await fs.mkdir(path.join(root,'layout-reference'),{recursive:true});
+for(const extension of ['js','css'])await fs.copyFile(path.join(assets,'layout-reference.'+extension),path.join(root,'layout-reference','client.'+extension));
+await fs.copyFile(path.join(assets,'notes-editor.js'),path.join(root,'layout-reference','notes-editor.js'));
+let html=await fs.readFile(htmlPath,'utf8');
+const stamp=crypto.randomBytes(6).toString('hex');
+const block=`<!-- layout-reference:start -->\n<link rel="stylesheet" href="layout-reference/client.css?v=${stamp}">\n<script>window.PPT_LAYOUT_REFERENCE=${JSON.stringify({url:'http://127.0.0.1:'+config.port,token:config.token})};</script>\n<script src="layout-reference/client.js?v=${stamp}"></script>\n<!-- layout-reference:end -->`;
+html=html.replace(/<!-- layout-reference:start -->[\s\S]*?<!-- layout-reference:end -->\s*/,'').replace(/<script src="layout-reference\/notes-editor.js[^\"]*"><\/script>\s*/g,'').replace('</body>',block+'\n<script src="layout-reference/notes-editor.js?v='+stamp+'"></script>\n</body>');
+// SVG thumbnails always reflect the same editable source as the stage.
+html=html.replace("img.src='预览/'+String(s.page).padStart(2,'0')+'.png?v=chapter-bridges-20260912'","img.src=s.file");
+html=html.replace("img.src=s.file;img.alt", "img.src=s.file+'?v='+Date.now();img.alt");
+html=html.replace("byId('slide').src=s.file+'?v=chapter-bridges-20260912'", "byId('slide').src=s.file+'?v='+Date.now()");
+await fs.writeFile(htmlPath,html);
+console.log('Reference layout controls installed.');
