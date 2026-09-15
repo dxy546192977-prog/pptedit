@@ -28,6 +28,7 @@
   overlay.hidden = true;
   overlay.innerHTML = '<header><strong>PPTedit · 编辑模式</strong><button type="button">保存并返回预览</button></header><div class="pptedit-frame-area"></div>';
   document.body.append(overlay);
+  const displayPage = id => host.getSlides().findIndex(s => s.page === id) + 1;
   const frames = new Map();
   let active;
   let pending;
@@ -50,7 +51,7 @@
       active.frame.style.pointerEvents = '';
       active.frame.contentWindow.postMessage({ type: 'pptedit-active' }, origin);
     }
-    heading.textContent = message || (active ? `PPTedit · 第 ${active.page} 页 · ${active.title}` : 'PPTedit · 编辑模式');
+    heading.textContent = message || (active ? `PPTedit · 第 ${displayPage(active.page)} 页 · ${active.title}` : 'PPTedit · 编辑模式');
     returnButton.textContent = active ? '保存并返回预览' : '返回预览';
   }
   function prepare(record) {
@@ -68,7 +69,7 @@
     }
     const next = host.getSlides().findIndex(slide => slide.page === active.page);
     if (next !== host.getIndex()) host.goTo(next);
-    heading.textContent = `PPTedit · 第 ${active.page} 页 · ${active.title}`;
+    heading.textContent = `PPTedit · 第 ${displayPage(active.page)} 页 · ${active.title}`;
     returnButton.textContent = '保存并返回预览';
     active.frame.contentWindow.postMessage({ type: 'pptedit-active' }, origin);
   }
@@ -117,7 +118,7 @@
       pending = frames.get(slide.page);
       if (!pending) {
         const frame = document.createElement('iframe');
-        frame.title = '编辑第 ' + slide.page + ' 页：' + slide.title;
+        frame.title = '编辑第 ' + displayPage(slide.page) + ' 页：' + slide.title;
         frame.onload = () => {
           const chapters = {};
           for (const group of document.querySelectorAll('.nav-chapter')) {
@@ -143,7 +144,7 @@
       pending.frame.style.pointerEvents = 'none';
       pending.frame.inert = true;
       if (active) active.frame.inert = true;
-      heading.textContent = `正在打开第 ${slide.page} 页…`;
+      heading.textContent = `正在打开第 ${displayPage(slide.page)} 页…`;
       returnButton.textContent = '取消切换';
       setMode(true);
       transitionTimer = setTimeout(() => cancelPending('页面加载超时，已保留当前页，请重试'), 15000);
@@ -171,6 +172,30 @@
     if (event.data.type === 'pptedit-painted' && record === pending && event.data.request === request) commit(record);
     if (event.data.type === 'pptedit-error' && record === pending) cancelPending('页面加载失败，已保留当前页，请重试');
     if (record !== active || pending) return;
+    if (event.data.type === 'pptedit-deleted') {
+      const slides = host.getSlides();
+      const deletedPage = event.data.deletedPage;
+      const index = slides.findIndex(slide => slide.page === deletedPage);
+      const order = event.data.order;
+      const expected = slides.filter(slide => slide.page !== deletedPage).map(slide => slide.page);
+      if (index < 0 || !expected.length || !Array.isArray(order) || order.length !== expected.length || order.some((p, i) => p !== expected[i])) return;
+      slides.splice(index, 1);
+      document.querySelectorAll(`.slide-link[data-page="${deletedPage}"], .thumb[data-page="${deletedPage}"]`).forEach(node => node.remove());
+      dispatchEvent(new Event('pptedit-order-changed'));
+      const removed = frames.get(deletedPage);
+      frames.delete(deletedPage);
+      for (const item of frames.values()) item.frame.contentWindow.postMessage({ type: 'pptedit-order', order }, origin);
+      if (active.page === deletedPage) {
+        active = undefined;
+        removed?.frame.remove();
+        const next = Math.min(index, slides.length - 1);
+        host.goTo(next);
+        editButton.onclick(slides[next].page);
+      } else {
+        removed?.frame.remove();
+        host.goTo(slides.findIndex(slide => slide.page === active.page));
+      }
+    }
     if (event.data.type === 'pptedit-reordered') {
       const slides = host.getSlides();
       const byPage = new Map(slides.map(slide => [slide.page, slide]));

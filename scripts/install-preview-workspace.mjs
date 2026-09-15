@@ -35,11 +35,15 @@ css = css.replace(':is(' + selectors + ') { --tool-icon: none; }', ':where(' + s
   .replace(':is(' + selectors + '):not(summary)', ':where(' + selectors + '):not(summary)');
 await fs.writeFile(path.join(source, 'preview-icons.css'), css);
 await fs.mkdir(path.join(target, 'assets'), { recursive: true });
-for (const name of ['preview-workspace.js', 'preview-workspace.css', 'preview-icons.css']) await fs.copyFile(path.join(source, name), path.join(target, 'assets', name));
+for (const name of ['preview-workspace.js', 'preview-workspace.css', 'preview-icons.css', 'preview-page-numbers.js']) await fs.copyFile(path.join(source, name), path.join(target, 'assets', name));
 await fs.cp(dir, path.join(target, 'assets/material-symbols'), { recursive: true });
 const htmlPath = path.join(target, 'index.html');
 let html = await fs.readFile(htmlPath, 'utf8');
 html = html.replace(/<!-- preview-workspace:start -->[\s\S]*?<!-- preview-workspace:end -->\s*/g, '');
 html = html.replace('</body>', '<!-- preview-workspace:start -->\n<link rel="stylesheet" href="assets/preview-workspace.css?v=1">\n<link rel="stylesheet" href="assets/preview-icons.css?v=1">\n<script src="assets/preview-workspace.js?v=1"></script>\n<!-- preview-workspace:end -->\n</body>');
+await fs.writeFile(htmlPath, html);
+// Install after the host and navigation controllers, independently of workspace styling.
+html = html.replace(/<script src="assets\/preview-page-numbers\.js[^\"]*"><\/script>\s*/g, '');
+html = html.replace('</body>', '<script src="assets/preview-page-numbers.js?v=1"></script>\n</body>');
 await fs.writeFile(htmlPath, html);
 console.log('Installed resizable notes and local Google Material Symbols.');

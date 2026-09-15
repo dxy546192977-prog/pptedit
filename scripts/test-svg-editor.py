@@ -87,6 +87,30 @@ with tempfile.TemporaryDirectory(prefix='pptedit-svg-test-') as temporary:
         assert [s['page'] for s in json.loads(request('/state?page=4')[1])['slides']] == [12, 4, 8]
         assert request('/reorder', {'previousOrder': [12, 4, 8], 'order': [4, 8, 12]})[0] == 200
         print('PASS: reorder persists all slide metadata, rejects duplicates and stale writes, and supports restoring order')
+        slides[1]['page'] = 5.1
+        (root / 'index.html').write_text('const slides=' + json.dumps(slides) + ';', encoding='utf-8')
+        assert request('/state?page=5.1')[0] == 200
+        fractional = {'previousOrder': [4, 5.1, 12], 'order': [5.1, 12, 4]}
+        assert request('/reorder', fractional)[0] == 200
+        assert [s['page'] for s in json.loads(request('/state?page=5.1')[1])['slides']] == [5.1, 12, 4]
+        assert request('/reorder', {'previousOrder': [5.1, 12, 4], 'order': [4, 5.1, 12]})[0] == 200
+        for invalid in ([4, 5.1, 5.1], [4, '5.1', 12], [4, True, 12], [4, 5.2, 12]):
+            assert request('/reorder', {**fractional, 'order': invalid})[0] == 400
+        print('PASS: fractional page IDs load, reorder, persist and restore; invalid orders rejected')
+        deletion = {'page': 5.1, 'previousOrder': [4, 5.1, 12]}
+        assert request('/delete-page', deletion, token=False)[0] == 403
+        assert request('/delete-page', {**deletion, 'page': True})[0] == 400
+        assert request('/delete-page', {**deletion, 'page': 99})[0] == 400
+        assert request('/delete-page', {**deletion, 'previousOrder': [12, 4, 5.1]})[0] == 409
+        assert request('/delete-page', deletion)[0] == 200
+        result = json.JSONDecoder().raw_decode((root / 'index.html').read_text().split('const slides=')[1])[0]
+        assert result == [slides[0], slides[2]]
+        assert (root / 'page.svg').read_text() == changed
+        assert request('/state?page=5.1')[0] == 400
+        assert request('/delete-page', {'page': 12, 'previousOrder': [4, 12]})[0] == 200
+        assert request('/delete-page', {'page': 4, 'previousOrder': [4]})[0] == 400
+        assert any('5.1' in p.read_text() for p in (root / '制作源' / 'PPTedit备份').rglob('index.html'))
+        print('PASS: deletion persists metadata and fractional IDs, retains SVG and backup, rejects stale/unauthorized requests, protects final page')
     finally:
         process.terminate()
         process.wait(timeout=5)

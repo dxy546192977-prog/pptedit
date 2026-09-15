@@ -61,7 +61,7 @@ def run(config):
     def target(page):
         html = (root / 'index.html').read_text(encoding='utf-8-sig')
         slides = json.JSONDecoder().raw_decode(html.split('const slides=', 1)[1])[0]
-        slide = next(s for s in slides if s['page'] == int(page))
+        slide = next(s for s in slides if str(s['page']) == str(page))
         path = (root / slide['file']).resolve()
         if not path.is_relative_to(root) or path.suffix.lower() != '.svg':
             raise ValueError('页面路径无效')
@@ -119,21 +119,28 @@ def run(config):
             self.wfile.write(payload)
         def do_POST(self):
             endpoint = urlparse(self.path).path
-            if endpoint not in ('/save', '/reorder'): return self.send_error(404)
+            if endpoint not in ('/save', '/reorder', '/delete-page'): return self.send_error(404)
             if not self.authorized(): return self.send_json(403, {'error': '未授权'})
             try:
                 size = int(self.headers.get('Content-Length', 0))
                 if not 0 < size < 80 * 1024 * 1024: raise ValueError('文档过大')
                 data = json.loads(self.rfile.read(size))
                 with lock:
-                    if endpoint == '/reorder':
+                    if endpoint in ('/reorder', '/delete-page'):
                         path = root / 'index.html'
                         original = path.read_text(encoding='utf-8-sig')
                         start = original.index('const slides=') + len('const slides=')
                         slides, length = json.JSONDecoder().raw_decode(original[start:])
                         pages = [s['page'] for s in slides]
                         order = data.get('order')
-                        if not isinstance(order, list) or len(order) != len(pages) or any(type(p) is not int for p in order) or set(order) != set(pages):
+                        if endpoint == '/delete-page':
+                            page = data.get('page')
+                            if type(page) not in (int, float) or page not in pages:
+                                raise ValueError('无法定位要删除的页面，请刷新后重试')
+                            if len(pages) <= 1:
+                                raise ValueError('至少保留 1 页，无法删除')
+                            order = [p for p in pages if p != page]
+                        elif not isinstance(order, list) or len(order) != len(pages) or any(type(p) not in (int, float) for p in order) or set(order) != set(pages):
                             raise ValueError('排序必须包含全部页面且不能重复')
                         if data.get('previousOrder') != pages:
                             return self.send_json(409, {'error': '顺序已被其他窗口修改，请刷新后重试'})

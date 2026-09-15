@@ -73,6 +73,8 @@ node scripts/install-h5-editor.mjs --target <project-root> --apply
 
 用户要求上传参考图后由 Codex 修改当前页时，读取 [references/layout-reference.md](references/layout-reference.md)，接入本地后台与当前 SVG 源文件。
 
+讲稿改写和参考版式默认接入本机 Codex。运行 `node scripts/install-layout-reference.mjs <index.html>` 自动检测已安装 CLI、复用登录、生成本地配置并启动后台，无需手填 CLI 绝对路径或 API Key。HTTP 预览须传入配置路径及 `--origin <预览站点源地址>`。重启电脑后用 `python3 scripts/setup-local-codex.py --html <index.html> --config <配置文件> --start` 恢复服务。前提是本机安装且登录 Codex、Python 可导入 Pillow；安装缺失条件必须明确报告。接入验收应真实调用本地 Codex，不能只以模拟响应或 health 成功代替。
+
 ## 完成标准
 
 当用户要求 skill 与当前预览联动更新时，将同一轮反馈同时落实到实际预览页面的源码与 skill 的可复用规则；若涉及本 skill 提供的运行时资源，也同步相应资源。同步工作区 skill 与本地已安装副本。只有文档修改不能算完成页面更新，只有页面补丁也不能算完成 skill 更新。确认实际入口及生成关系，避免覆盖文稿内容或修改归档版本；能访问浏览器时刷新并验收，否则明确说明文件已更新、当前标签页仍需刷新。此约定是执行工作流，不代表静态页面或 skill 本身具备自动热更新能力。

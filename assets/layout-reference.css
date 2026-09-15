@@ -28,6 +28,16 @@
   :is(.layout-reference-dialog,.layout-reference-dialog textarea)::-webkit-scrollbar-corner{all:revert}
 }
 .layout-reference-dialog::backdrop{background:#0009}
+.layout-reference-dialog.layout-reference-fixed{padding:0!important;overflow:hidden;scrollbar-gutter:auto}
+.layout-reference-fixed>form{display:flex;flex-direction:column;max-height:calc(85vh - 2px);margin:0;overflow:hidden}
+.layout-reference-fixed>form>header{flex:none;padding:20px 24px 12px!important;margin:0}
+.layout-reference-fixed>form>footer{flex:none;padding:0 24px 16px;margin:0;border-bottom:1px solid #64708055;gap:12px;flex-wrap:wrap}
+.layout-reference-scroll{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 24px 24px;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#68717d transparent}
+@media(max-width:600px){.layout-reference-fixed>form>header{padding:16px 16px 12px!important}.layout-reference-fixed>form>footer{padding:0 16px 12px}.layout-reference-scroll{padding:0 16px 16px}}
+.layout-reference-dialog [hidden]{display:none!important}
+.layout-reference-dialog select{font:inherit;color:inherit;background:#22272f;border:1px solid #647080;border-radius:6px;padding:8px 12px}
+.layout-reference-dialog header>button::before,.layout-reference-dialog header>button::after{content:none!important;display:none!important}
+.notes-editor-dialog select{font:inherit;color:inherit;background:#22272f;border:1px solid #647080;border-radius:6px;padding:8px 12px}
 .layout-reference-dialog header,.layout-reference-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .layout-reference-dialog label{display:flex;flex-direction:column;gap:8px;margin:16px 0}
 .layout-reference-dialog textarea{font:inherit;background:#09110c;color:inherit;border:1px solid #42634e;padding:10px;resize:vertical}
@@ -51,6 +61,8 @@
 .layout-history-images figure{margin:0}.layout-history-images img{width:100%;height:auto;margin-top:6px}.layout-history-images figcaption{font-weight:bold;color:#e7eee9}
 .layout-job-notice{position:fixed;right:20px;bottom:20px;z-index:1000;display:flex;align-items:center;gap:12px;box-sizing:border-box;max-width:min(520px,calc(100vw - 32px));padding:12px 16px;border:1px solid #42634e;border-radius:12px;background:#111b15;color:#e7eee9;box-shadow:0 8px 28px #0004;color-scheme:dark}
 .layout-job-notice[hidden],.layout-job-notice [hidden]{display:none!important}
+.layout-job-notice:has([data-handoff]:not([hidden])){flex-wrap:wrap}
+.layout-job-notice [data-usage]{color:#b8d1ff;white-space:nowrap}
 .layout-job-notice p{margin:0;min-width:0;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
 .layout-job-notice button{flex:none;font:inherit;cursor:pointer}
 .layout-job-notice[data-state="error"]{border-color:#a97956}
