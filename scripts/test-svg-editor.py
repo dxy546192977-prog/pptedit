@@ -94,7 +94,9 @@ with tempfile.TemporaryDirectory(prefix='pptedit-svg-test-') as temporary:
         assert request('/reorder', fractional)[0] == 200
         assert [s['page'] for s in json.loads(request('/state?page=5.1')[1])['slides']] == [5.1, 12, 4]
         assert request('/reorder', {'previousOrder': [5.1, 12, 4], 'order': [4, 5.1, 12]})[0] == 200
-        for invalid in ([4, 5.1, 5.1], [4, '5.1', 12], [4, True, 12], [4, 5.2, 12]):
+        assert request('/reorder', {**fractional, 'order': [4, '5.1', 12]})[0] == 200
+        assert [s['page'] for s in json.loads(request('/state?page=5.1')[1])['slides']] == [4, 5.1, 12]
+        for invalid in ([4, 5.1, 5.1], [4, 'not-a-page', 12], [4, True, 12], [4, 5.2, 12]):
             assert request('/reorder', {**fractional, 'order': invalid})[0] == 400
         print('PASS: fractional page IDs load, reorder, persist and restore; invalid orders rejected')
         deletion = {'page': 5.1, 'previousOrder': [4, 5.1, 12]}

@@ -50,9 +50,13 @@ description: 创建、修改、调试和验收 H5、HTML 单页、落地页与�
 
 ## 可视化编辑器
 
+### 编辑 PPT 的默认入口
+
+用户说「编辑 PPT」「把项目加载编辑器」「提取 SVG 到 Figma」时，默认使用已确认的**完整 PPTedit 工作台**：左侧章节目录与缩略图／大纲、顶部工具栏、中央画布、讲述备注和「预览／编辑」切换。先读取 [references/ppt-workspace-default.md](references/ppt-workspace-default.md)，定位并打开目标项目的完整工作台。仅打开 HTML 的 `?edit=1`，或只更新 `assets/h5-editor/` 内核与配色，不算完成此请求。普通 H5 局部编辑及用户明确指定其他入口时仍按其要求执行。
+
 ### 网页 Deck 的编辑 / SVG 预览双模式
 
-当网页 Deck 同时具有旧版可视化编辑界面和 SVG 确认稿时，保留旧版作为「编辑模式」，以当前 SVG 确认稿作为「预览模式」，提供明确的双向切换入口。沿用用户认可的预览布局，不用预览页替代或删除编辑能力。具体状态同步与验收要求见 [references/deck-modes.md](references/deck-modes.md)；创建或调整这类双模式 Deck 时读取。此约定不要求普通 H5 或原生 PPTX 增加 SVG 预览。
+网页 Deck 默认采用上述完整工作台，SVG 预览与编辑共享当前文档源，并提供明确的双向切换入口。已有旧版编辑能力可保留兼容，但不再作为「编辑 PPT」的默认交付入口。具体状态同步与验收要求见 [references/deck-modes.md](references/deck-modes.md)；创建或调整这类双模式 Deck 时读取。此约定不要求普通 H5 或原生 PPTX 增加 SVG 预览。
 
 只有在项目已接入浏览器编辑器，或用户明确要求可视化编辑时，才读取 [references/visual-editor-adapter.md](references/visual-editor-adapter.md)。
 

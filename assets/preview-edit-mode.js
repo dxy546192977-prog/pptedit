@@ -16,7 +16,8 @@
   mode.className = 'preview-mode-switch';
   mode.setAttribute('role', 'group');
   mode.setAttribute('aria-label', '页面模式');
-  mode.innerHTML = '<button type="button" aria-pressed="true">预览</button><button type="button" aria-pressed="false">编辑</button>';
+  // 文案包在 <span> 里：小屏时只留图标，靠 aria-label/title 保住可访问名称。
+  mode.innerHTML = '<button type="button" aria-pressed="true" aria-label="预览" title="预览"><span>预览</span></button><button type="button" aria-pressed="false" aria-label="编辑" title="编辑"><span>编辑</span></button>';
   bar.prepend(mode);
   const [previewButton, editButton] = mode.children;
   const status = document.createElement('p');
@@ -55,6 +56,7 @@
     returnButton.textContent = active ? '保存并返回预览' : '返回预览';
   }
   function prepare(record) {
+    record.frame.contentWindow.postMessage({ type: 'pptedit-navigation', navigation: host.getNavigation?.(), order: host.getSlides().map(slide => slide.page) }, origin);
     record.frame.contentWindow.postMessage({ type: 'pptedit-prepare', request }, origin);
   }
   function commit(record) {
@@ -128,7 +130,7 @@
           }
           frame.contentWindow.postMessage({
             type: 'pptedit-manifest', page: slide.page,
-            slides: host.getSlides().map(({page, title, file}) => ({page, title, file})), chapters
+            slides: host.getSlides().map(({page, title, file, previewMedia}) => ({page, title, file, previewMedia})), chapters, navigation: host.getNavigation?.()
           }, origin);
         };
         frame.src = config.url + '/editor.html?edit=1&page=' + slide.page + '#token=' + encodeURIComponent(config.token) + '&parent=' + encodeURIComponent(/^https?:/.test(location.protocol) ? location.origin : 'null');
@@ -152,7 +154,7 @@
       status.textContent = '';
     } catch {
       cancelPending('编辑器连接失败，请重试');
-      status.textContent = '编辑服务未启动，请运行制作源中的「启动PPTedit编辑器.cmd」后重试';
+      status.textContent = '编辑服务未启动，请运行制作源中的「启动PPTedit编辑器」（Mac 用 .command，Windows 用 .cmd）后重试';
     } finally { editButton.disabled = false; }
   };
   overlay.querySelector('button').onclick = () => {
@@ -161,6 +163,16 @@
     else { ++request; setMode(false); }
   };
   previewButton.onclick = () => setMode(false);
+  addEventListener('pptedit-navigation-changed', () => {
+    if (active) heading.textContent = `PPTedit · 第 ${displayPage(active.page)} 页 · ${active.title}`;
+    for (const item of frames.values()) item.frame.contentWindow.postMessage({ type: 'pptedit-navigation', navigation: host.getNavigation?.(), order: host.getSlides().map(slide => slide.page) }, origin);
+  });
+  // 预览侧栏自身的拖拽排序等外部路径：带 detail.order 的事件 → 同步给所有已打开的编辑器 frame
+  addEventListener('pptedit-order-changed', event => {
+    const order = event.detail?.order;
+    if (!Array.isArray(order)) return;
+    for (const item of frames.values()) item.frame.contentWindow?.postMessage({ type: 'pptedit-order', order, revisions: event.detail?.revisions }, origin);
+  });
   addEventListener('message', event => {
     const record = frames.get(event.data?.page);
     if (event.origin !== origin || !record || event.source !== record.frame.contentWindow) return;
@@ -172,6 +184,9 @@
     if (event.data.type === 'pptedit-painted' && record === pending && event.data.request === request) commit(record);
     if (event.data.type === 'pptedit-error' && record === pending) cancelPending('页面加载失败，已保留当前页，请重试');
     if (record !== active || pending) return;
+    if (event.data.type === 'pptedit-group-pages') host.groupPages?.(event.data.pages);
+    if (event.data.type === 'pptedit-chapter-edit') host.editChapter?.(event.data.key);
+    if (event.data.type === 'pptedit-chapter-toggle') host.setChapterOpen?.(event.data.key, event.data.open);
     if (event.data.type === 'pptedit-deleted') {
       const slides = host.getSlides();
       const deletedPage = event.data.deletedPage;
@@ -184,7 +199,7 @@
       dispatchEvent(new Event('pptedit-order-changed'));
       const removed = frames.get(deletedPage);
       frames.delete(deletedPage);
-      for (const item of frames.values()) item.frame.contentWindow.postMessage({ type: 'pptedit-order', order }, origin);
+      for (const item of frames.values()) item.frame.contentWindow.postMessage({ type: 'pptedit-order', order, revisions: event.data.revisions }, origin);
       if (active.page === deletedPage) {
         active = undefined;
         removed?.frame.remove();
@@ -202,12 +217,13 @@
       const order = event.data.order;
       if (!Array.isArray(order) || order.length !== slides.length || new Set(order).size !== slides.length || order.some(p => !byPage.has(p))) return;
       slides.splice(0, slides.length, ...order.map(p => byPage.get(p)));
+      if (Array.isArray(event.data.navigation)) host.acceptNavigation?.(event.data.navigation);
       dispatchEvent(new Event('pptedit-order-changed'));
       for (const p of order) {
         const thumb = document.querySelector(`.thumb[data-page="${p}"]`);
         if (thumb) thumb.parentNode.append(thumb);
       }
-      for (const item of frames.values()) item.frame.contentWindow.postMessage({ type: 'pptedit-order', order }, origin);
+      for (const item of frames.values()) item.frame.contentWindow.postMessage({ type: 'pptedit-order', order, revisions: event.data.revisions }, origin);
       host.goTo(slides.findIndex(slide => slide.page === active.page));
     }
     if (event.data.type === 'pptedit-navigate') {

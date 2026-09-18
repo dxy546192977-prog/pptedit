@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PPTedit · 编辑当前页</title>
 <base href="/deck/">
+<link rel="stylesheet" href="/preview-navigation.css">
 <style>
 body{margin:0;background:#121417;color:#e4e7ed;font:14px sans-serif}#stage{width:1920px;height:1080px;position:relative}#deck,.slide{width:100%;height:100%;position:relative}.slide>svg{display:block;width:100%;height:100%}#load-status{position:fixed;top:24px;left:24px}
 /* A single source page is edited here; deck structure remains managed by its host. */
@@ -16,13 +17,50 @@ body{margin:0;background:#121417;color:#e4e7ed;font:14px sans-serif}#stage{width
 .h5ve-root .pptedit-page-delete{display:block;margin:2px 0 10px auto;padding:4px 8px;border:0;border-radius:4px;background:transparent;color:#b3bbc8;font-size:11px;cursor:pointer}
 .h5ve-root .pptedit-page-delete:hover{color:#ffb4ab;background:#ffb4ab12}
 .h5ve-root .pptedit-page-delete:disabled{opacity:.35;cursor:default}
-.h5ve-root .pptedit-page-link[data-drop]{position:relative}
-.h5ve-root .pptedit-page-link[data-drop]::after{content:"";position:absolute;left:0;right:0;height:2px;background:#adc7ee;border:0;border-radius:0;pointer-events:none}
-.h5ve-root .pptedit-page-link[data-drop=before]::after{top:0}
-.h5ve-root .pptedit-page-link[data-drop=after]::after{bottom:0}
 html:not(.pptedit-ready) #stage{visibility:hidden}
 html:not(.pptedit-ready){overflow:hidden}
-</style><!-- editor-material:start -->
+</style><style>
+.h5ve-root .h5ve-slides-list { display: block; min-height: 0; padding: 0 12px 24px; --md-primary: #adc7ee; }
+.h5ve-root .h5ve-slides { background: #1a1d22; }
+.h5ve-root .nav-chapter > summary { min-height: 62px; box-sizing: border-box; }
+.h5ve-root .nav-chapter-edit { padding: 0; min-width: 24px; border: 0; background: transparent; }
+.h5ve-root .nav-chapter > summary::before { width: 6px; height: 6px; }
+.h5ve-root .pptedit-page-link { display: grid; gap: 12px; margin: 2px 0; padding: 10px 8px; border: 0; border-radius: 4px; }
+html .h5ve-root .pptedit-page-link[aria-current=page] { background: #ffffff06; outline: 1px solid #adc7ee; outline-offset: -1px; box-shadow: none; }
+.h5ve-root .pptedit-page-link img { border: 1px solid #ffffff18; border-radius: 2px; box-sizing: border-box; }
+.h5ve-root .pptedit-page-link span { margin: 0; color: #bcc4d0; font-size: 12px; font-weight: 400; line-height: 1.55; }
+.h5ve-root .h5ve-slides-list[data-view=outline] .pptedit-page-link img { display: none; }
+.h5ve-root .h5ve-slides-list[data-view=outline] .pptedit-page-link { min-height: 40px; }
+.h5ve-root .pptedit-page-delete { margin-bottom: 6px; font-size: 10px; color: #909baa; }
+</style>
+<style>
+.h5ve-root .pptedit-page-item { display: block; position: relative; width: 100%; min-width: 0; box-sizing: border-box; margin: 6px 0 12px; }
+.h5ve-root .pptedit-page-link { width: 100%; min-width: 0; box-sizing: border-box; cursor: grab; }
+.h5ve-root .nav-section > .pptedit-page-item { margin-left: 16px; width: calc(100% - 16px); padding-left: 6px; border-left: 1px solid #ffffff12; }
+.h5ve-root .pptedit-page-item.is-dragging { opacity: .4; }
+.h5ve-root .pptedit-page-actions { display: flex; align-items: center; gap: 4px; padding: 3px 4px; }
+.h5ve-root .pptedit-page-actions button { border: 0; background: transparent; color: #aab5c4; border-radius: 4px; padding: 4px 9px; cursor: pointer; }
+.h5ve-root .pptedit-page-actions button:hover { background: #ffffff12; color: white; }
+.h5ve-root .pptedit-page-actions button:disabled { opacity: .3; cursor: default; }
+.h5ve-root .pptedit-page-actions .pptedit-page-delete { margin: 0 0 0 auto; }
+.pptedit-page-drag-preview { position: fixed; top: -100px; left: 0; max-width: 250px; padding: 10px 14px; border: 1px solid #adc7ee; border-radius: 6px; background: #273346; color: white; font: 12px/1.5 system-ui; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+</style>
+<style>
+html .h5ve-root .pptedit-page-link.is-page-selected { background: #adc7ee26; outline: 2px solid #adc7ee; outline-offset: -2px; }
+.h5ve-root .pptedit-group-pages { background: transparent; color: #adc7ee; border: 0; padding: 3px 0; font: inherit; cursor: pointer; }
+.h5ve-root .pptedit-group-pages:disabled { opacity: .5; cursor: default; }
+</style>
+<style>
+.h5ve-root .h5ve-slides-list { position: relative; }
+/* 拖动排序定位线：绝对定位在列表滚动内容坐标系内（左侧圆点 + 微光，深色面板上清晰可辨） */
+.h5ve-root .pptedit-page-drop-line { position: absolute; height: 2px; border-radius: 1px; background: #adc7ee; box-shadow: 0 0 0 1px #adc7ee55, 0 0 8px #adc7ee99; pointer-events: none; z-index: 5; }
+.h5ve-root .pptedit-page-drop-line::before { content: ""; position: absolute; left: -5px; top: -3px; width: 6px; height: 6px; border-radius: 50%; border: 1px solid #adc7ee; background: #121419; box-sizing: content-box; }
+.h5ve-root .pptedit-page-drop-line[hidden] { display: none; }
+/* 拖动期间关闭列表项 hover 高亮，避免与定位线争夺注意力 */
+.h5ve-root .h5ve-slides-list.is-page-sorting .pptedit-page-link:hover { background: transparent; }
+html .h5ve-root .pptedit-page-item.is-dragging .pptedit-page-link { outline: none; box-shadow: none; }
+</style>
+<!-- editor-material:start -->
 <style>
 /* Shared visual language with preview-material.css; chrome only, never slide artwork. */
 html body.h5ve-active { background: #121417 !important; }
@@ -294,6 +332,9 @@ html .h5ve-root .h5ve-element-icon[data-material-kind="T"]>svg { display:none !i
 html .h5ve-root .h5ve-element-icon[data-material-kind="▧"] { --editor-icon: url('/deck/assets/material-symbols/image.svg'); font-size:0 !important; }
 html .h5ve-root .h5ve-element-icon[data-material-kind="▧"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
 html .h5ve-root .h5ve-element-icon[data-material-kind="▧"]>svg { display:none !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="▶"] { --editor-icon: url('/deck/assets/material-symbols/video_library.svg'); font-size:0 !important; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="▶"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
+html .h5ve-root .h5ve-element-icon[data-material-kind="▶"]>svg { display:none !important; }
 html .h5ve-root .h5ve-element-icon[data-material-kind="◇"] { --editor-icon: url('/deck/assets/material-symbols/shapes.svg'); font-size:0 !important; }
 html .h5ve-root .h5ve-element-icon[data-material-kind="◇"]::before { content:''; display:inline-block; width:18px; height:18px; flex:0 0 18px; vertical-align:middle; background:currentColor; mask:var(--editor-icon) center/contain no-repeat; }
 html .h5ve-root .h5ve-element-icon[data-material-kind="◇"]>svg { display:none !important; }

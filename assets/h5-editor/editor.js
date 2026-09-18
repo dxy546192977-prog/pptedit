@@ -47,7 +47,7 @@
   if (!FORCE_ON) return;
 
   const DEFAULT_INSPECTOR_W = 288;
-  const SLIDES_PANEL_W = 152;
+  const SLIDES_PANEL_W = Math.max(152, Math.min(360, Number(window.PPTEDIT_DOCUMENT_HOST?.slidesPanelWidth) || 152));
   const DEFAULT_LEFT_PANEL_W = 248;
   const MIN_INSPECTOR_W = 260;
   const MAX_INSPECTOR_W = 440;
@@ -128,6 +128,8 @@
   let layerDragPreview = null;
   let layerDragState = null;
   let layerExpandTimer = 0;
+  let layerDragRaf = 0;
+  let layerDropIndicator = null;
   let layerAutoRevealRaf = 0;
   let layerAutoRevealPending = false;
   let panelFields = {};
@@ -264,6 +266,22 @@
     let el = target;
     while (el && !isEditableTarget(el)) el = el.parentElement;
     return el && isEditableTarget(el) ? el : null;
+  }
+
+  /**
+   * 忽略编辑器覆盖层，命中画布上指针位置的最深可编辑元素。
+   * scope 给定时只接受 scope 内部的命中。
+   */
+  function canvasElementAtPoint(x, y, scope = null) {
+    const stack = document.elementsFromPoint(x, y);
+    for (const node of stack) {
+      if (isEditorNode(node)) continue;
+      const el = findEditableTarget(node);
+      if (!el) continue;
+      if (scope && !scope.contains(el)) continue;
+      return el;
+    }
+    return null;
   }
 
   function contentRoot() {
@@ -2006,6 +2024,10 @@
   function elementLayerName(el) {
     const customName = el.getAttribute("data-h5ve-layer-name");
     if (customName?.trim()) return customName.trim().slice(0, 48);
+    if (el.dataset?.h5veGroup === "1" && !el.dataset?.h5veAutoLayout) {
+      const count = [...el.children].filter((child) => child instanceof Element && !isStructuralChrome(child)).length;
+      return `编组 (${count})`;
+    }
     const semantic =
       el.getAttribute("aria-label") ||
       el.getAttribute("alt") ||
@@ -2127,8 +2149,10 @@
   }
 
   function elementLayerIcon(el) {
+    if (el.matches("video, [data-h5ve-media-type=video]") ||
+        (el.localName === "foreignObject" && el.querySelector("video"))) return "▶";
+    if (el.matches("img, image, canvas")) return "▧";
     if (el.dataset?.h5veGroup === "1" || el.children.length > 0) return "G";
-    if (el.matches("img, video, canvas")) return "▧";
     if (el.matches("svg")) return "◇";
     if (layerDirectText(el) || el.matches("h1, h2, h3, h4, h5, h6, p, span, strong, em, small")) return "T";
     return "□";
@@ -2139,6 +2163,26 @@
     return [...parent.children].filter(isVisibleLayerElement).reverse();
   }
 
+  // ---------------------------------------------------------------------------
+  // 图层面板拖动排序
+  //
+  // 面板行按 DOM 逆序渲染（上方 = 更靠后的 DOM 兄弟 = 视觉更靠上层）。
+  // 所有放置意图统一归约为一个「插入点」：{ parent, before, depth, kind }
+  //   - parent : 目标父容器
+  //   - before : 插入到该 DOM 节点之前（null = 追加到 parent 末尾，即面板顶端）
+  //   - depth  : 面板缩进层级，用于绘制指示线
+  //   - kind   : "gap" | "inside"
+  // dragover 只缓存指针，真正的解析与绘制放在 rAF 中执行，避免高频抖动。
+  // ---------------------------------------------------------------------------
+
+  const LAYER_ROW_INDENT = 13;
+  const LAYER_ROW_INDENT_BASE = 5;
+  const LAYER_DROP_INSIDE_BAND = [0.3, 0.7];
+  const LAYER_DROP_HYSTERESIS = 0.06;
+  const LAYER_AUTOSCROLL_EDGE = 36;
+  const LAYER_AUTOSCROLL_MAX = 14;
+  const LAYER_EXPAND_DELAY = 420;
+
   function clearLayerDropFeedback() {
     clearTimeout(layerExpandTimer);
     layerExpandTimer = 0;
@@ -2147,12 +2191,14 @@
       row.classList.remove("is-dragging");
       row.removeAttribute("aria-grabbed");
     });
+    elementsPanel?.classList.remove("is-layer-dragging");
   }
 
   function clearLayerDropTargets() {
     elementsPanel?.querySelectorAll(
-      ".h5ve-element-item.drop-before, .h5ve-element-item.drop-after, .h5ve-element-item.drop-inside",
-    ).forEach((row) => row.classList.remove("drop-before", "drop-after", "drop-inside"));
+      ".h5ve-element-item.drop-before, .h5ve-element-item.drop-after, .h5ve-element-item.drop-inside, .h5ve-element-item.drop-invalid",
+    ).forEach((row) => row.classList.remove("drop-before", "drop-after", "drop-inside", "drop-invalid"));
+    if (layerDropIndicator) layerDropIndicator.hidden = true;
   }
 
   function clearLayerDragPreview() {
@@ -2161,6 +2207,8 @@
   }
 
   function clearLayerDragState() {
+    cancelAnimationFrame(layerDragRaf);
+    layerDragRaf = 0;
     clearLayerDropFeedback();
     clearLayerDragPreview();
     layerDragState = null;
@@ -2180,6 +2228,18 @@
     document.querySelector(".h5ve-root")?.appendChild(preview);
     layerDragPreview = preview;
     return preview;
+  }
+
+  function ensureLayerDropIndicator(list) {
+    if (layerDropIndicator?.isConnected && layerDropIndicator.parentElement === list) return layerDropIndicator;
+    layerDropIndicator?.remove();
+    const indicator = document.createElement("div");
+    indicator.className = "h5ve-layer-drop-indicator";
+    indicator.hidden = true;
+    indicator.setAttribute("aria-hidden", "true");
+    list.appendChild(indicator);
+    layerDropIndicator = indicator;
+    return indicator;
   }
 
   function topLevelLayerDragSources(el) {
@@ -2205,19 +2265,293 @@
     return target.dataset.h5veGroup === "1" || isFrameContainer(target);
   }
 
-  function layerDropPlacement(event, row, target, sources) {
-    const rect = row.getBoundingClientRect();
-    const ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
-    if (canReceiveLayerChildren(target, sources) && ratio >= 0.24 && ratio <= 0.76) return "inside";
-    return ratio < 0.5 ? "before" : "after";
+  function layerRowDepth(row) {
+    return Number(row?.style?.getPropertyValue("--h5ve-layer-depth")) || 0;
   }
 
-  function isValidLayerDrop(sources, target, placement) {
-    if (!sources.length || !(target instanceof HTMLElement)) return false;
-    if (sources.some((source) => source === target || source.contains(target))) return false;
-    if (placement === "inside") return canReceiveLayerChildren(target, sources);
-    const parent = target.parentElement;
-    return !!parent && !isElementLocked(parent) && !sources.includes(parent);
+  function layerRowsOf(list) {
+    return [...list.querySelectorAll(".h5ve-element-item")];
+  }
+
+  function layerRowElement(row) {
+    return row?.__h5veElement instanceof HTMLElement ? row.__h5veElement : null;
+  }
+
+  function isLayerParentAcceptable(parent, sources) {
+    if (!(parent instanceof Element)) return false;
+    if (isElementLocked(parent)) return false;
+    if (sources.some((source) => source === parent || source.contains(parent))) return false;
+    // 根（当前页）永远可放；其余容器需要是组 / 框架 / 普通可容纳元素。
+    const root = currentSlide() || contentRoot();
+    if (parent === root) return true;
+    return canReceiveLayerChildren(parent, sources);
+  }
+
+  /**
+   * 计算相邻两行之间的「缝隙」在给定深度上的插入点。
+   * upper / lower 为面板中相邻的两行（upper 在上），任一可为空。
+   * 可选深度范围：[lower.depth, upper.depth (+1 若 upper 是展开容器)]。
+   * 深度 d 对应「插入到 upper 在深度 d 的祖先（含自身）之后」= DOM 上 insertBefore 该祖先。
+   */
+  function layerGapCandidates(upperRow, lowerRow, root) {
+    const candidates = [];
+    const upperEl = layerRowElement(upperRow);
+    const lowerEl = layerRowElement(lowerRow);
+    const upperDepth = upperRow ? layerRowDepth(upperRow) : -1;
+    const lowerDepth = lowerRow ? layerRowDepth(lowerRow) : 0;
+    const upperExpanded = !!upperRow && upperRow.getAttribute("aria-expanded") === "true";
+
+    if (!upperRow) {
+      // 面板最顶端：插入到 root 的 DOM 末尾（视觉最上层）。
+      if (lowerEl) {
+        // lower 可能位于某个深度 > 0 的位置（被折叠祖先遮住时不会发生，因为顶端行必为 depth 0）
+        candidates.push({ parent: lowerEl.parentElement, before: null, depth: lowerDepth, kind: "gap" });
+      } else {
+        candidates.push({ parent: root, before: null, depth: 0, kind: "gap" });
+      }
+      return candidates;
+    }
+
+    const maxDepth = upperDepth + (upperExpanded ? 1 : 0);
+    const minDepth = lowerRow ? lowerDepth : 0;
+    // 沿 upper 的祖先链找出各深度对应的节点。
+    const chain = [];
+    let cursor = upperEl;
+    let depth = upperDepth;
+    while (cursor && cursor !== root && depth >= 0) {
+      chain[depth] = cursor;
+      cursor = cursor.parentElement;
+      depth -= 1;
+    }
+    for (let d = maxDepth; d >= minDepth; d -= 1) {
+      if (d === upperDepth + 1) {
+        // 进入展开容器内部的末尾（视觉上紧贴容器标题下方 = DOM 末尾）。
+        candidates.push({ parent: upperEl, before: null, depth: d, kind: "gap" });
+        continue;
+      }
+      const node = chain[d];
+      if (!node) continue;
+      candidates.push({ parent: node.parentElement, before: node, depth: d, kind: "gap" });
+    }
+    return candidates;
+  }
+
+  function pickLayerDepthByPointer(candidates, clientX, listRect) {
+    if (candidates.length <= 1) return candidates[0] || null;
+    // 指针相对列表左侧的 X 决定层级；每级 13px。取最接近的候选。
+    const x = clientX - listRect.left - LAYER_ROW_INDENT_BASE;
+    const wanted = Math.round(x / LAYER_ROW_INDENT);
+    let best = candidates[0];
+    let bestDist = Infinity;
+    candidates.forEach((candidate) => {
+      const dist = Math.abs(candidate.depth - wanted);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = candidate;
+      }
+    });
+    return best;
+  }
+
+  function isNoopLayerMove(sources, plan) {
+    if (!plan || plan.kind !== "gap") return false;
+    if (sources.length !== 1) return false;
+    const [source] = sources;
+    if (source.parentElement !== plan.parent) return false;
+    const siblings = [...plan.parent.children].filter((child) => child instanceof Element && !isStructuralChrome(child));
+    const index = siblings.indexOf(source);
+    if (plan.before === null) return index === siblings.length - 1;
+    if (plan.before === source) return true;
+    return siblings[index + 1] === plan.before;
+  }
+
+  /**
+   * 根据指针位置解析放置计划。返回 null 表示不可放置。
+   */
+  function resolveLayerDropPlan(clientX, clientY, list, sources, previous) {
+    const root = currentSlide() || (!document.getElementById("deck") ? contentRoot() : null);
+    if (!root) return null;
+    const allRows = layerRowsOf(list);
+    const isSourceRow = (row) => {
+      const el = layerRowElement(row);
+      return !!el && sources.some((source) => source === el || source.contains(el));
+    };
+    // 被拖动的块（源行 + 其后代行）不参与邻接关系；指针落在块内部时视为不可放置，
+    // 落在块的上/下边缘时按「块不存在」计算其所在缝隙。
+    const rows = allRows.filter((row) => !isSourceRow(row));
+    const listRect = list.getBoundingClientRect();
+    let hovered = null;
+    let hoveredRatio = 0.5;
+    let forcedGap = null; // { upper, lower } 当指针位于源块边缘时直接给出缝隙
+    const hitRow = allRows.find((row) => {
+      const r = row.getBoundingClientRect();
+      return clientY >= r.top && clientY <= r.bottom;
+    });
+    if (hitRow && isSourceRow(hitRow)) {
+      const blockRows = allRows.filter(isSourceRow);
+      const first = blockRows[0];
+      const last = blockRows[blockRows.length - 1];
+      const fr = first.getBoundingClientRect();
+      const lr = last.getBoundingClientRect();
+      const firstIndex = allRows.indexOf(first);
+      const lastIndex = allRows.indexOf(last);
+      const upperNeighbor = [...allRows.slice(0, firstIndex)].reverse().find((row) => !isSourceRow(row)) || null;
+      const lowerNeighbor = allRows.slice(lastIndex + 1).find((row) => !isSourceRow(row)) || null;
+      if (hitRow === first && clientY <= fr.top + fr.height * 0.35) {
+        forcedGap = { upper: upperNeighbor, lower: lowerNeighbor, zone: "above" };
+      } else if (hitRow === last && clientY >= lr.bottom - lr.height * 0.35) {
+        forcedGap = { upper: upperNeighbor, lower: lowerNeighbor, zone: "below" };
+      } else {
+        return null;
+      }
+    } else if (hitRow) {
+      hovered = hitRow;
+      const r = hitRow.getBoundingClientRect();
+      hoveredRatio = r.height > 0 ? (clientY - r.top) / r.height : 0.5;
+    }
+
+    let plan = null;
+    if (forcedGap) {
+      const candidates = layerGapCandidates(forcedGap.upper, forcedGap.lower, root).filter((candidate) =>
+        isLayerParentAcceptable(candidate.parent, sources),
+      );
+      const picked = pickLayerDepthByPointer(candidates, clientX, listRect);
+      if (picked) plan = { ...picked, row: null, zone: forcedGap.zone, upper: forcedGap.upper, lower: forcedGap.lower };
+    } else if (hovered) {
+      const el = layerRowElement(hovered);
+      const index = rows.indexOf(hovered);
+      const container = canReceiveLayerChildren(el, sources);
+      let zone;
+      if (container) {
+        let [lo, hi] = LAYER_DROP_INSIDE_BAND;
+        // 滞回：上一次已处于「inside」则扩大中间带，否则收窄，避免边界抖动。
+        if (previous?.row === hovered) {
+          if (previous.kind === "inside") {
+            lo -= LAYER_DROP_HYSTERESIS;
+            hi += LAYER_DROP_HYSTERESIS;
+          } else {
+            lo += LAYER_DROP_HYSTERESIS;
+            hi -= LAYER_DROP_HYSTERESIS;
+          }
+        }
+        zone = hoveredRatio < lo ? "above" : hoveredRatio > hi ? "below" : "inside";
+      } else {
+        let split = 0.5;
+        if (previous?.row === hovered && previous.kind === "gap") {
+          split += previous.zone === "above" ? LAYER_DROP_HYSTERESIS : -LAYER_DROP_HYSTERESIS;
+        }
+        zone = hoveredRatio < split ? "above" : "below";
+      }
+
+      if (zone === "inside") {
+        plan = { parent: el, before: null, depth: layerRowDepth(hovered) + 1, kind: "inside", row: hovered, zone };
+      } else {
+        const upper = zone === "above" ? rows[index - 1] || null : hovered;
+        const lower = zone === "above" ? hovered : rows[index + 1] || null;
+        const candidates = layerGapCandidates(upper, lower, root).filter((candidate) =>
+          isLayerParentAcceptable(candidate.parent, sources),
+        );
+        const picked = pickLayerDepthByPointer(candidates, clientX, listRect);
+        if (picked) plan = { ...picked, row: hovered, zone, upper, lower };
+      }
+    } else if (rows.length) {
+      // 空白区：在最后一行之下 → 面板底部缝隙；在第一行之上 → 顶部缝隙。
+      const first = rows[0];
+      const last = rows[rows.length - 1];
+      const firstRect = first.getBoundingClientRect();
+      const upper = clientY < firstRect.top ? null : last;
+      const lower = clientY < firstRect.top ? first : null;
+      const candidates = layerGapCandidates(upper, lower, root).filter((candidate) =>
+        isLayerParentAcceptable(candidate.parent, sources),
+      );
+      const picked = pickLayerDepthByPointer(candidates, clientX, listRect);
+      if (picked) plan = { ...picked, row: null, zone: upper ? "below" : "above", upper, lower };
+    } else {
+      plan = { parent: root, before: null, depth: 0, kind: "gap", row: null, zone: "below" };
+    }
+
+    if (!plan) return null;
+    if (!isLayerParentAcceptable(plan.parent, sources)) return null;
+    if (plan.before && sources.includes(plan.before)) {
+      // 插到自身之前等价于不动；改为插到源后面的下一个非源兄弟前。
+      let next = plan.before;
+      while (next && sources.includes(next)) next = next.nextElementSibling;
+      plan.before = next || null;
+    }
+    plan.noop = isNoopLayerMove(sources, plan);
+    return plan;
+  }
+
+  function renderLayerDropPlan(list, plan) {
+    clearLayerDropTargets();
+    if (!plan) return;
+    const indicator = ensureLayerDropIndicator(list);
+    const listRect = list.getBoundingClientRect();
+    if (plan.kind === "inside") {
+      plan.row?.classList.add("drop-inside");
+      indicator.hidden = true;
+      return;
+    }
+    // 指示线 Y：缝隙位于 upper.bottom / lower.top 之间；无 upper 则贴 lower 顶；无 lower 则贴 upper 底。
+    let y;
+    if (plan.upper && plan.lower) {
+      const a = plan.upper.getBoundingClientRect();
+      const b = plan.lower.getBoundingClientRect();
+      y = (a.bottom + b.top) / 2;
+    } else if (plan.upper) {
+      y = plan.upper.getBoundingClientRect().bottom;
+    } else if (plan.lower) {
+      y = plan.lower.getBoundingClientRect().top;
+    } else {
+      y = listRect.top + 8;
+    }
+    const left = LAYER_ROW_INDENT_BASE + plan.depth * LAYER_ROW_INDENT;
+    indicator.hidden = false;
+    indicator.classList.toggle("is-noop", !!plan.noop);
+    indicator.style.top = `${y - listRect.top + list.scrollTop}px`;
+    indicator.style.left = `${left}px`;
+  }
+
+  function autoscrollLayerList(list, clientY) {
+    const rect = list.getBoundingClientRect();
+    let delta = 0;
+    if (clientY < rect.top + LAYER_AUTOSCROLL_EDGE) {
+      delta = -Math.ceil(((rect.top + LAYER_AUTOSCROLL_EDGE - clientY) / LAYER_AUTOSCROLL_EDGE) * LAYER_AUTOSCROLL_MAX);
+    } else if (clientY > rect.bottom - LAYER_AUTOSCROLL_EDGE) {
+      delta = Math.ceil(((clientY - (rect.bottom - LAYER_AUTOSCROLL_EDGE)) / LAYER_AUTOSCROLL_EDGE) * LAYER_AUTOSCROLL_MAX);
+    }
+    if (delta) list.scrollTop += delta;
+    return !!delta;
+  }
+
+  function scheduleLayerExpand(row, el) {
+    clearTimeout(layerExpandTimer);
+    layerExpandTimer = 0;
+    if (!row || !collapsedElementLayers.has(el)) return;
+    layerExpandTimer = setTimeout(() => {
+      layerExpandTimer = 0;
+      if (!layerDragState || !collapsedElementLayers.has(el)) return;
+      collapsedElementLayers.delete(el);
+      layerDragState.rerenderPending = true;
+      renderElementPanel();
+      layerDragState.rerenderPending = false;
+    }, LAYER_EXPAND_DELAY);
+  }
+
+  function processLayerDragFrame(list) {
+    layerDragRaf = 0;
+    if (!layerDragState || layerDragState.cancelled) return;
+    const { clientX, clientY } = layerDragState.pointer;
+    const scrolled = autoscrollLayerList(list, clientY);
+    const plan = resolveLayerDropPlan(clientX, clientY, list, layerDragState.sources, layerDragState.plan);
+    layerDragState.plan = plan;
+    renderLayerDropPlan(list, plan);
+    if (plan?.kind === "inside") scheduleLayerExpand(plan.row, layerRowElement(plan.row));
+    else {
+      clearTimeout(layerExpandTimer);
+      layerExpandTimer = 0;
+    }
+    if (scrolled) layerDragRaf = requestAnimationFrame(() => processLayerDragFrame(list));
   }
 
   function normalizeLayerSiblingDepth(parent) {
@@ -2231,17 +2565,41 @@
 
   function fitLayerGroupWithoutMovingChildren(group) {
     if (!(group instanceof HTMLElement) || group.dataset.h5veGroup !== "1") return;
+    if (group.dataset.h5veAutoLayout === "1") return;
     const children = [...group.children].filter(
       (child) => child instanceof HTMLElement && !isStructuralChrome(child),
     );
+    if (!children.length) return;
     const snapshots = children.map((child) => ({ child, rect: child.getBoundingClientRect() }));
     fitDomGroupFrame(group);
     snapshots.forEach(({ child, rect }) => pinElementToViewportRect(child, rect));
   }
 
-  function moveLayersByTreeDrop(sources, target, placement) {
-    if (!isValidLayerDrop(sources, target, placement)) return false;
+  /** 自内向外重新贴合祖先组链；空组直接移除。 */
+  function refitLayerGroupChain(start) {
+    const root = currentSlide() || contentRoot();
+    let cursor = start instanceof Element ? start : null;
+    while (cursor && cursor !== root) {
+      const next = cursor.parentElement;
+      if (cursor.dataset?.h5veGroup === "1") {
+        const kids = [...cursor.children].filter((child) => child instanceof Element && !isStructuralChrome(child));
+        if (kids.length === 0) {
+          cursor.remove();
+        } else {
+          fitLayerGroupWithoutMovingChildren(cursor);
+        }
+      }
+      cursor = next;
+    }
+  }
+
+  function moveLayersByPlan(sources, plan) {
+    if (!plan || plan.noop) return false;
+    const parent = plan.parent;
+    if (!isLayerParentAcceptable(parent, sources)) return false;
+    if (plan.before && plan.before.parentElement !== parent) return false;
     endAnyTextEditing();
+
     const snapshots = sources.map((el) => ({ el, rect: el.getBoundingClientRect() }));
     const oldParents = new Set(sources.map((el) => el.parentElement).filter(Boolean));
     const fragment = document.createDocumentFragment();
@@ -2249,38 +2607,86 @@
       clearLogicalGroupLink(el);
       fragment.appendChild(el);
     });
+    if (plan.before) parent.insertBefore(fragment, plan.before);
+    else parent.appendChild(fragment);
+    if (plan.kind === "inside") collapsedElementLayers.delete(parent);
 
-    let nextParent = target.parentElement;
-    if (placement === "inside") {
-      target.appendChild(fragment);
-      nextParent = target;
-      collapsedElementLayers.delete(target);
-    } else if (placement === "before") {
-      target.after(fragment);
-    } else {
-      target.before(fragment);
-    }
+    // 自适应布局容器内保持流式；其余按拖动前的屏幕矩形重新锚定。
+    const keepInFlow = parent.dataset?.h5veAutoLayout === "1";
+    if (!keepInFlow) snapshots.forEach(({ el, rect }) => pinElementToViewportRect(el, rect));
 
-    snapshots.forEach(({ el, rect }) => pinElementToViewportRect(el, rect));
-    oldParents.forEach((parent) => {
-      if (parent !== nextParent && parent?.dataset?.h5veGroup === "1" && parent.childElementCount > 0) {
-        fitLayerGroupWithoutMovingChildren(parent);
-      }
-      normalizeLayerSiblingDepth(parent);
+    // 先处理旧父链（可能出现空组），再处理新父链；两者都要从内向外贴合。
+    oldParents.forEach((oldParent) => {
+      if (oldParent !== parent) refitLayerGroupChain(oldParent);
+      if (oldParent.isConnected) normalizeLayerSiblingDepth(oldParent);
     });
-    if (nextParent?.dataset?.h5veGroup === "1") fitLayerGroupWithoutMovingChildren(nextParent);
-    normalizeLayerSiblingDepth(nextParent);
+    refitLayerGroupChain(parent);
+    normalizeLayerSiblingDepth(parent);
 
-    setSelection(sources, sources[sources.length - 1]);
-    pushHistory();
+    // 新父链贴合后子元素坐标可能被重新计算；再次按快照校正一次保证「位置不变」。
+    if (!keepInFlow) snapshots.forEach(({ el, rect }) => el.isConnected && pinElementToViewportRect(el, rect));
+
+    setSelection(sources.filter((el) => el.isConnected), sources[sources.length - 1]);
+    pushHistory({ label: "调整图层顺序" });
     renderElementPanel();
     scheduleSelectionBox();
-    const action = placement === "inside"
-      ? `已移入「${elementLayerName(target)}」`
-      : placement === "before"
-        ? "已上移图层"
-        : "已下移图层";
+    const root = currentSlide() || contentRoot();
+    const where = parent === root ? "页面" : `「${elementLayerName(parent)}」`;
+    const action = plan.kind === "inside"
+      ? `已移入${where}`
+      : parent === root
+        ? "已调整图层顺序"
+        : `已移至${where}内`;
     showToast(`${action} · 位置不变 · 可撤销`);
+    return true;
+  }
+
+  function bindLayerListDragEvents(list) {
+    if (!list || list.dataset.h5veDragBound === "1") return;
+    list.dataset.h5veDragBound = "1";
+    list.addEventListener("dragover", (event) => {
+      if (!layerDragState || layerDragState.cancelled || !event.dataTransfer) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+      layerDragState.pointer = { clientX: event.clientX, clientY: event.clientY };
+      if (!layerDragRaf) layerDragRaf = requestAnimationFrame(() => processLayerDragFrame(list));
+    });
+    list.addEventListener("dragleave", (event) => {
+      if (!layerDragState) return;
+      if (event.relatedTarget instanceof Node && list.contains(event.relatedTarget)) return;
+      clearLayerDropTargets();
+      layerDragState.plan = null;
+    });
+    list.addEventListener("drop", (event) => {
+      if (!layerDragState) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (layerDragState.cancelled) {
+        clearLayerDragState();
+        return;
+      }
+      cancelAnimationFrame(layerDragRaf);
+      layerDragRaf = 0;
+      // drop 时同步重算一次，保证结果精确到当前指针。
+      const plan = resolveLayerDropPlan(event.clientX, event.clientY, list, layerDragState.sources, layerDragState.plan);
+      const sources = layerDragState.sources.slice();
+      clearLayerDragState();
+      if (!plan) {
+        showToast("此处不能放置");
+        return;
+      }
+      if (plan.noop) return;
+      moveLayersByPlan(sources, plan);
+    });
+  }
+
+  function cancelLayerDrag() {
+    if (!layerDragState) return false;
+    layerDragState.cancelled = true;
+    clearLayerDropTargets();
+    clearLayerDropFeedback();
+    showToast("已取消拖动");
     return true;
   }
 
@@ -2346,6 +2752,8 @@
 
   function renderElementPanel() {
     if (!elementsPanel) return;
+    // 拖动进行中不重建行（会打断原生 DnD 并造成跳动）；仅允许拖动引擎自身触发的展开重绘。
+    if (layerDragState && !layerDragState.cancelled && !layerDragState.rerenderPending) return;
     const root = currentSlide() || (!document.getElementById("deck") ? contentRoot() : null);
     if (!root) {
       elementsPanel.hidden = true;
@@ -2361,6 +2769,7 @@
     const previousScrollTop = list.scrollTop;
     elementsPanel.dataset.h5veRendering = "1";
     list.innerHTML = "";
+    bindLayerListDragEvents(list);
     const query = normalizeLayerSearchText(state.layerQuery);
     const entries = [];
     const entryByElement = new Map();
@@ -2535,46 +2944,26 @@
             showToast("锁定元素不能调整层级");
             return;
           }
-          layerDragState = { source: el, sources, target: null, placement: null };
-          row.classList.add("is-dragging");
-          row.setAttribute("aria-grabbed", "true");
+          layerDragState = {
+            source: el,
+            sources,
+            plan: null,
+            pointer: { clientX: event.clientX, clientY: event.clientY },
+            cancelled: false,
+          };
+          // 所有被拖动的源行统一淡出（多选拖动时更清晰）。
+          layerRowsOf(list).forEach((candidate) => {
+            const target = layerRowElement(candidate);
+            if (target && sources.some((source) => source === target || source.contains(target))) {
+              candidate.classList.add("is-dragging");
+              candidate.setAttribute("aria-grabbed", "true");
+            }
+          });
+          elementsPanel.classList.add("is-layer-dragging");
           event.dataTransfer.effectAllowed = "move";
           event.dataTransfer.setData("text/plain", sources.map(elementLayerName).join(", "));
           const preview = createLayerDragPreview(el, sources.length);
           if (preview) event.dataTransfer.setDragImage(preview, 14, 14);
-        });
-        row.addEventListener("dragover", (event) => {
-          if (!layerDragState || !event.dataTransfer) return;
-          const placement = layerDropPlacement(event, row, el, layerDragState.sources);
-          if (!isValidLayerDrop(layerDragState.sources, el, placement)) {
-            event.dataTransfer.dropEffect = "none";
-            return;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-          event.dataTransfer.dropEffect = "move";
-          clearLayerDropTargets();
-          row.classList.add(`drop-${placement}`);
-          layerDragState.target = el;
-          layerDragState.placement = placement;
-          const listRect = list.getBoundingClientRect();
-          if (event.clientY < listRect.top + 30) list.scrollTop -= 16;
-          else if (event.clientY > listRect.bottom - 30) list.scrollTop += 16;
-        });
-        row.addEventListener("dragleave", (event) => {
-          if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return;
-          row.classList.remove("drop-before", "drop-after", "drop-inside");
-        });
-        row.addEventListener("drop", (event) => {
-          if (!layerDragState) return;
-          const placement = layerDropPlacement(event, row, el, layerDragState.sources);
-          if (!isValidLayerDrop(layerDragState.sources, el, placement)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          const sources = layerDragState.sources.slice();
-          clearLayerDropFeedback();
-          moveLayersByTreeDrop(sources, el, placement);
-          clearLayerDragState();
         });
         row.addEventListener("dragend", () => clearLayerDragState());
         visibility.addEventListener("click", (event) => {
@@ -2722,11 +3111,20 @@
     return true;
   }
 
-  function enterSelectionChild(el) {
+  function enterSelectionChild(el, point = null) {
     if (!(el instanceof Element)) return false;
     const children = elementLayerChildren(el);
-    const child = children.find((candidate) => !isElementLocked(candidate) && !isElementHidden(candidate));
-    if (!child) return false;
+    const usable = children.filter((candidate) => !isElementLocked(candidate) && !isElementHidden(candidate));
+    if (!usable.length) return false;
+    // 双击时优先进入指针所在的子元素（嵌套 Group 下钻更符合直觉），否则取首个。
+    let child = null;
+    if (point) {
+      child = usable.find((candidate) => {
+        const r = candidate.getBoundingClientRect();
+        return point.x >= r.left && point.x <= r.right && point.y >= r.top && point.y <= r.bottom;
+      }) || null;
+    }
+    child = child || usable[0];
     selectSingle(child);
     showToast(`已进入子层· ${elementLayerName(child)}`);
     return true;
@@ -2799,6 +3197,67 @@
     return el.closest("[data-h5ve-group='1']");
   }
 
+  /**
+   * 从 el 自身（若是组）到当前页根之间的所有 DOM 组包装器，
+   * 按「最外层 → 最内层」排序。用于多层嵌套 Group 的逐级下钻。
+   */
+  function domGroupChain(el, root = currentSlide() || contentRoot()) {
+    const chain = [];
+    let cursor = el instanceof Element ? el : null;
+    while (cursor && cursor !== root && root?.contains(cursor)) {
+      if (cursor.dataset?.h5veGroup === "1") chain.unshift(cursor);
+      cursor = cursor.parentElement;
+    }
+    return chain;
+  }
+
+  /** 当前选区中包含 el 的那个元素（或其祖先）。 */
+  function selectedOwnerOf(el, selection = state.selected) {
+    if (!(el instanceof Element)) return null;
+    return selection.find((sel) => sel === el || sel.contains(el)) || null;
+  }
+
+  /**
+   * 当前选区共同所在的「编辑范围」组：所有已选元素都位于其内部的最内层 DOM 组。
+   * 若选区为空或不在任何组内，返回 null（表示范围是页面根）。
+   * 已选元素本身若是组，也算作范围（点击它内部会下钻到子级）。
+   */
+  function selectionScopeGroup(selection = state.selected) {
+    const connected = selection.filter((el) => el instanceof Element && el.isConnected);
+    if (!connected.length) return null;
+    const chains = connected.map((el) => domGroupChain(el));
+    if (chains.some((chain) => !chain.length)) return null;
+    let scope = null;
+    for (let depth = 0; ; depth += 1) {
+      const candidate = chains[0][depth];
+      if (!candidate || !chains.every((chain) => chain[depth] === candidate)) break;
+      scope = candidate;
+    }
+    return scope;
+  }
+
+  /**
+   * 点击 el 时应当选中的目标（Figma / Keynote 语义）：
+   * - 默认选中包含 el 的最外层组；
+   * - 若当前选区已经位于某个组内（或恰好选中了该组），则在该组内部下钻一级；
+   * - 不在任何组内时返回 el 本身。
+   */
+  function resolveGroupClickTarget(el, selection = state.selected) {
+    if (!(el instanceof Element)) return null;
+    const chain = domGroupChain(el);
+    if (!chain.length) return el;
+    const scope = selectionScopeGroup(selection);
+    if (scope && scope.contains(el)) {
+      const index = chain.indexOf(scope);
+      if (scope === el) return el;
+      // 范围组本身可能就是 el 的祖先之一（index>=0），下钻到它内部的下一级；
+      // 若 scope 比 el 的组链更深（el 不在链内），则 el 本身就是 scope 的后代叶子。
+      if (index >= 0) return chain[index + 1] || el;
+      return el;
+    }
+    return chain[0];
+  }
+
   function expandDomGroupMembers(el) {
     const wrapper = findDomGroupWrapper(el);
     if (!wrapper || el === wrapper) return null;
@@ -2839,11 +3298,19 @@
     const out = new Set();
     (els || []).forEach((el) => {
       if (!el) return;
+      // 已明确选中的 DOM 组内子元素按原样参与（支持在子 Group 内继续分组），
+      // 不再自动扩展为整个兄弟集合；仅逻辑编组（group-id）仍按整组展开。
+      if (findDomGroupWrapper(el) && el.dataset?.h5veGroup !== "1") {
+        out.add(el);
+        return;
+      }
       const expanded = expandByGroupId(el);
       if (expanded) expanded.forEach((n) => out.add(n));
       else out.add(el);
     });
-    return Array.from(out);
+    // 去掉被同一选区中其他成员包含的后代，避免「父 + 子」同时入组。
+    const list = Array.from(out);
+    return list.filter((el) => !list.some((other) => other !== el && other.contains(el)));
   }
 
   function drawGuideLines(lines) {
@@ -3012,6 +3479,8 @@
 
   function fitDomGroupFrame(wrapper) {
     if (!(wrapper instanceof Element) || wrapper.dataset?.h5veGroup !== "1") return;
+    if (wrapper instanceof SVGElement) return; // SVG groups derive their bounds from their children.
+    if (wrapper.dataset?.h5veAutoLayout === "1") return; // flex 框架自动 hug，不能绝对化子元素。
     const kids = Array.from(wrapper.children).filter(
       (child) => child instanceof Element && !isStructuralChrome(child),
     );
@@ -3045,10 +3514,27 @@
     if (!parent || !(frame instanceof Element)) return [];
     const kids = Array.from(frame.children).filter((child) => child instanceof Element && !isStructuralChrome(child));
     if (!kids.length) return [];
+    if (frame instanceof SVGGraphicsElement && parent instanceof SVGGraphicsElement) {
+      const inverse = parent.getScreenCTM()?.inverse();
+      if (!inverse) return [];
+      const snapshots = kids.map((kid) => ({ kid, matrix: kid.getScreenCTM?.() }));
+      if (snapshots.some(({ matrix }) => !matrix)) return [];
+      snapshots.forEach(({ kid, matrix }) => {
+        const local = inverse.multiply(matrix);
+        parent.insertBefore(kid, frame);
+        kid.style.transformBox = "view-box";
+        kid.style.transformOrigin = "0px 0px";
+        kid.style.transform = `matrix(${local.a}, ${local.b}, ${local.c}, ${local.d}, ${local.e}, ${local.f})`;
+      });
+      frame.remove();
+      return kids;
+    }
     const snapshots = kids.map((kid) => ({ kid, rect: kid.getBoundingClientRect() }));
+    // 父级是自适应布局时，子元素回到父级的 flex 流中即可，不能绝对定位。
+    const keepInFlow = parent.dataset?.h5veAutoLayout === "1" && frame.dataset?.h5veAutoLayout === "1";
     snapshots.forEach(({ kid, rect }) => {
       parent.insertBefore(kid, frame);
-      pinElementToViewportRect(kid, rect);
+      if (!keepInFlow) pinElementToViewportRect(kid, rect);
     });
     frame.remove();
     return kids;
@@ -3066,6 +3552,52 @@
     if (!parent || !members.every((el) => el.parentElement === parent)) return null;
     const order = [...parent.children];
     members.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    // HTML wrappers inside SVG are not rendered. Keep SVG coordinates and
+    // transforms intact by inserting a native, identity-transform group.
+    if (parent instanceof SVGElement && parent.localName !== "foreignObject") {
+      if (!members.every((el) => el instanceof SVGGraphicsElement)) return null;
+      const wrapper = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      wrapper.dataset.h5veGroup = "1";
+      parent.insertBefore(wrapper, members[0]);
+      members.forEach((el) => {
+        clearLogicalGroupLink(el);
+        wrapper.appendChild(el);
+      });
+      return wrapper;
+    }
+    // 自适应布局（flex）容器内的子集编组：保持流式布局，
+    // 用一个继承主轴方向的嵌套 flex 包装器承载，不能把成员绝对定位。
+    if (parent.dataset?.h5veAutoLayout === "1") {
+      if (!members.every((el) => el instanceof HTMLElement)) return null;
+      const wrapper = document.createElement("div");
+      wrapper.dataset.h5veGroup = "1";
+      wrapper.dataset.h5veFrame = "1";
+      wrapper.dataset.h5veAutoLayout = "1";
+      wrapper.dataset.h5veFlow = parent.dataset.h5veFlow || "horizontal";
+      wrapper.dataset.h5veWidthMode = "hug";
+      wrapper.dataset.h5veHeightMode = "hug";
+      wrapper.className = "h5ve-group h5ve-auto-layout";
+      const parentStyle = getComputedStyle(parent);
+      wrapper.style.display = "flex";
+      wrapper.style.flexDirection = parentStyle.flexDirection || "row";
+      wrapper.style.flexWrap = "nowrap";
+      wrapper.style.alignItems = parentStyle.alignItems || "flex-start";
+      wrapper.style.justifyContent = "flex-start";
+      wrapper.style.gap = parentStyle.gap || "0px";
+      wrapper.style.padding = "0";
+      wrapper.style.margin = "0";
+      wrapper.style.position = "relative";
+      wrapper.style.flex = "0 0 auto";
+      wrapper.style.width = "fit-content";
+      wrapper.style.height = "fit-content";
+      wrapper.style.overflow = "visible";
+      parent.insertBefore(wrapper, members[0]);
+      members.forEach((el) => {
+        clearLogicalGroupLink(el);
+        wrapper.appendChild(el);
+      });
+      return wrapper;
+    }
     const snapshots = members.map((el) => ({ el, rect: el.getBoundingClientRect() }));
     const frame = unionBoxes(snapshots.map(({ rect }) => rect));
     const wrapper = document.createElement("div");
@@ -3260,10 +3792,18 @@
 
     const wrapper = wrapDomGroup(members);
     if (wrapper) {
+      const depth = domGroupChain(wrapper).length - 1;
+      // 新组落在父组内部时不会改变父组的外接框（子集并集 ⊆ 父组），
+      // 但父组若是绝对定位框架，仍需把新 wrapper 的坐标按父组基准校正一次。
       selectSingle(wrapper);
       pushHistory();
       renderElementPanel();
-      showToast(`已编组为自适应框架 · ⌘⇧G 或侧栏「解组」`);
+      const nested = depth > 0 ? ` · 第 ${depth + 1} 层` : "";
+      showToast(
+        wrapper instanceof SVGElement
+          ? `已编组 SVG 图层${nested} · ⌘⇧G 解组`
+          : `已编组 ${members.length} 个元素${nested} · ⌘⇧G 解组 · 再次点击可下钻`,
+      );
       updateStatus();
       return;
     }
@@ -3298,15 +3838,20 @@
       if (wrapper) domWrappers.add(wrapper);
     });
     if (domWrappers.size > 0) {
+      // 嵌套时先解内层再解外层：外层 unwrap 会重新 pin 直接子元素，
+      // 若内层还在，其屏幕矩形被整体带走，后续再解内层才不会漂移。
+      const ordered = [...domWrappers].sort((a, b) => (a.contains(b) ? 1 : b.contains(a) ? -1 : 0));
       const freed = [];
-      domWrappers.forEach((wrapper) => {
+      ordered.forEach((wrapper) => {
+        if (!wrapper.isConnected) return;
         freed.push(...unwrapDomGroup(wrapper));
       });
       if (freed.length) {
-        selectSingle(freed[0]);
+        const alive = freed.filter((el) => el.isConnected);
+        setSelection(alive, alive[0]);
         pushHistory();
         renderElementPanel();
-        showToast(`已解组 ${freed.length} 个元素`);
+        showToast(`已解组 ${alive.length} 个元素`);
         return;
       }
     }
@@ -3402,14 +3947,19 @@
       if (!shiftKey) selectSingle(null);
       return;
     }
-    const wrapper = findDomGroupWrapper(el);
-    const target = wrapper || el;
     if (shiftKey) {
-      toggleInSelection(target);
+      // 追加 / 取消：若点击落在某个已选元素（或其内部），取消的是那个已选元素；
+      // 否则按当前编辑范围解析出应加入的组级目标。
+      const owner = selectedOwnerOf(el);
+      toggleInSelection(owner || resolveGroupClickTarget(el));
       return;
     }
-    const members = expandByGroupId(target);
-    if (members) setSelection(members, target);
+    const target = resolveGroupClickTarget(el);
+    // 已按 DOM 组链解析出的目标只再按逻辑编组（group-id）展开，
+    // 不能再退回「整个兄弟集合」，否则无法在组内选中单个子元素。
+    const logicalId = target?.dataset?.h5veGroupId;
+    const members = logicalId ? queryGroupMembers(logicalId, target.closest?.(".slide") || currentSlide()) : null;
+    if (members && members.length > 1) setSelection(members, target);
     else selectSingle(target);
   }
 
@@ -5627,9 +6177,26 @@
   }
 
   let localClipboard = null;
+  function slideViewportMatrix(slide) {
+    const rect = slide.getBoundingClientRect();
+    return new DOMMatrix([
+      rect.width / (slide.offsetWidth || rect.width), 0, 0,
+      rect.height / (slide.offsetHeight || rect.height), rect.left, rect.top,
+    ]);
+  }
+
+  function clipboardElement(item) {
+    const template = document.createElement("template");
+    template.innerHTML = item.svg ? `<svg xmlns="http://www.w3.org/2000/svg">${item.html}</svg>` : item.html;
+    return sanitizeClipboardElement(item.svg ? template.content.firstElementChild?.firstElementChild : template.content.firstElementChild);
+  }
+
   function selectionClipboardHtml() {
     if (!localClipboard?.length) return "";
-    return `<div data-h5ve-clipboard="1">${localClipboard.map((item) => item.html).join("")}</div>`;
+    return `<div data-h5ve-clipboard="1">${localClipboard.map((item) => {
+      const geometry = encodeURIComponent(JSON.stringify({ svg: item.svg, matrix: item.matrix, rect: item.rect }));
+      return `<div data-h5ve-clipboard-item="${geometry}">${item.svg ? `<svg xmlns="http://www.w3.org/2000/svg">${item.html}</svg>` : item.html}</div>`;
+    }).join("")}</div>`;
   }
 
   const CLIPBOARD_HTML_LIMIT = 1024 * 1024;
@@ -5685,18 +6252,20 @@
     const wrapper = template.content.querySelector('[data-h5ve-clipboard="1"]');
     if (!wrapper) return false;
     localClipboard = [...wrapper.children]
-      .map(sanitizeClipboardElement)
-      .filter(Boolean)
-      .map((el) => ({
-        html: el.outerHTML,
-        style: {
-          left: el.style.left,
-          top: el.style.top,
-          width: el.style.width,
-          height: el.style.height,
-          transform: el.style.transform,
-        },
-      }));
+      .map((entry) => {
+        let geometry = {};
+        let el = entry;
+        if (entry.hasAttribute("data-h5ve-clipboard-item")) {
+          try { geometry = JSON.parse(decodeURIComponent(entry.getAttribute("data-h5ve-clipboard-item"))); }
+          catch { return null; }
+          if (!geometry || typeof geometry !== "object") return null;
+          if (geometry.matrix && (!Array.isArray(geometry.matrix) || geometry.matrix.length !== 6 || !geometry.matrix.every(Number.isFinite))) return null;
+          if (geometry.rect && !["left", "top", "width", "height"].every((key) => Number.isFinite(geometry.rect[key]))) return null;
+          el = geometry.svg ? entry.firstElementChild?.firstElementChild : entry.firstElementChild;
+        }
+        el = sanitizeClipboardElement(el);
+        return el ? { html: el.outerHTML, svg: !!geometry.svg, matrix: geometry.matrix, rect: geometry.rect } : null;
+      }).filter(Boolean);
     return localClipboard.length > 0;
   }
 
@@ -5716,17 +6285,24 @@
 
   function copySelection(options = {}) {
     if (state.selected.length === 0) return;
-    localClipboard = state.selected.map(el => ({
-      html: el.outerHTML,
-      // 记录相对父容器的原始位置
-      style: {
-        left: el.style.left,
-        top: el.style.top,
-        width: el.style.width,
-        height: el.style.height,
-        transform: el.style.transform
+    const slide = currentSlide();
+    if (!slide) return;
+    const canvas = slideViewportMatrix(slide);
+    localClipboard = state.selected.filter((el) => !state.selected.some((other) => other !== el && other.contains(el))).map(el => {
+      const clone = el.cloneNode(true);
+      const svg = el instanceof SVGGraphicsElement && el.localName !== "svg";
+      if (svg) {
+        const matrix = canvas.inverse().multiply(el.getScreenCTM());
+        return { html: clone.outerHTML, svg, matrix: [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f] };
       }
-    }));
+      const rect = el.getBoundingClientRect();
+      const computed = getComputedStyle(el);
+      clone.style.transform = computed.transform;
+      return {
+        html: clone.outerHTML, svg: false,
+        rect: { left: (rect.left - canvas.e) / canvas.a, top: (rect.top - canvas.f) / canvas.d, width: rect.width / canvas.a, height: rect.height / canvas.d },
+      };
+    });
     if (options.writeSystem) writeSelectionToSystemClipboard();
     updateContextMenuState();
     showToast(`已复制 ${localClipboard.length} 个元素`);
@@ -5739,18 +6315,37 @@
     const newSelection = [];
 
     localClipboard.forEach(item => {
-      const template = document.createElement("template");
-      template.innerHTML = item.html;
-      const el = sanitizeClipboardElement(template.content.firstElementChild);
+      const el = clipboardElement(item);
       if (!el) return;
-      // 稍微偏移一点或保持原位（取决于用户是否在同一页）
-      slide.appendChild(el);
+      if (item.svg) {
+        let root = slide.querySelector(":scope > svg");
+        if (!root) {
+          root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          root.setAttribute("width", String(slide.offsetWidth));
+          root.setAttribute("height", String(slide.offsetHeight));
+          root.style.cssText = "position:absolute;inset:0;overflow:visible";
+          slide.appendChild(root);
+        }
+        root.appendChild(el);
+        if (item.matrix) {
+          const matrix = DOMMatrix.fromMatrix(root.getScreenCTM()).inverse().multiply(slideViewportMatrix(slide)).multiply(new DOMMatrix(item.matrix));
+          el.style.transformBox = "view-box";
+          el.style.transformOrigin = "0px 0px";
+          el.style.transform = `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${matrix.e}, ${matrix.f})`;
+        }
+      } else {
+        slide.appendChild(el);
+        if (item.rect) {
+          const canvas = slideViewportMatrix(slide);
+          pinElementToViewportRect(el, { left: canvas.e + item.rect.left * canvas.a, top: canvas.f + item.rect.top * canvas.d, width: item.rect.width * canvas.a, height: item.rect.height * canvas.d });
+        }
+      }
       newSelection.push(el);
     });
 
     setSelection(newSelection);
     pushHistory();
-    showToast(`已粘贴 ${newSelection.length} 个元素`);
+    showToast(`已原位粘贴 ${newSelection.length} 个元素`);
   }
 
   function hasImageTransfer(dataTransfer) {
@@ -8434,8 +9029,7 @@
         }
         if (!target && !isEditorNode(e.target)) {
           target = findEditableTarget(e.target);
-          const wrapper = findDomGroupWrapper(target);
-          if (wrapper) target = wrapper;
+          if (target) target = selectedOwnerOf(target) || resolveGroupClickTarget(target);
         }
         const slide = currentSlide();
         const onCanvas = !!slide && (slide.contains(e.target) || selectionBox);
@@ -8469,7 +9063,7 @@
         e.stopPropagation();
         selectSingle(el);
         if (canEditText(el)) startTextEdit(el, e);
-        else enterSelectionChild(el);
+        else enterSelectionChild(el, { x: e.clientX, y: e.clientY });
       },
       true,
     );
@@ -8698,8 +9292,8 @@
 
         const hitSelected = state.selected.some((sel) => sel === el || sel.contains(el));
         if (hitSelected) {
-          const wrapper = findDomGroupWrapper(el);
-          if (wrapper && state.selected.includes(wrapper)) selectSingle(wrapper);
+          // 按住任意已选元素（含嵌套组的后代）直接拖动整个选区；
+          // 未产生位移时由随后的 click 负责逐级下钻。
           startMoveDrag(e);
         } else {
           // 点击未选中元素：不立即 startMarquee，
@@ -8735,6 +9329,17 @@
         toggleInSelection(el);
         return;
       }
+      // 已选中的是 DOM 组：单击其覆盖层 → 下钻到指针所在的下一级（多层嵌套逐级进入）。
+      if (el?.dataset?.h5veGroup === "1" && state.selected.length === 1) {
+        const hit = canvasElementAtPoint(e.clientX, e.clientY, el);
+        if (hit && hit !== el) {
+          e.preventDefault();
+          e.stopPropagation();
+          const target = resolveGroupClickTarget(hit);
+          if (target && target !== el) selectSingle(target);
+          return;
+        }
+      }
       if (!canEditText(el)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -8766,7 +9371,7 @@
         return;
       }
 
-      if (!e.target.closest(".h5ve-resize") && enterSelectionChild(el)) {
+      if (!e.target.closest(".h5ve-resize") && enterSelectionChild(el, { x: e.clientX, y: e.clientY })) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -8975,6 +9580,12 @@
           return;
         }
 
+        if (e.key === "Escape" && layerDragState && !layerDragState.cancelled) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          cancelLayerDrag();
+          return;
+        }
         if (e.key === "Escape" && contextMenu && !contextMenu.hidden) {
           e.preventDefault();
           e.stopImmediatePropagation();

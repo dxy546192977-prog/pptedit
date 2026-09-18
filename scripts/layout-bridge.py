@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import xml.etree.ElementTree as ET
 import importlib.util
 import local_codex
+from preview_origin import preview_origin_allowed
 import figma_reference
 from PIL import Image
 import urllib.request, urllib.parse, socket, ipaddress
@@ -139,7 +140,7 @@ def main():
         def cors_headers(self):
             origin=self.headers.get('Origin','null')
             allowed=('null',f"http://127.0.0.1:{config['port']}",*config.get('allowedOrigins',[]))
-            self.send_header('Access-Control-Allow-Origin',origin if origin in allowed else 'null')
+            self.send_header('Access-Control-Allow-Origin',origin if preview_origin_allowed(origin, config) else 'null')
             self.send_header('Access-Control-Allow-Headers','Content-Type, X-Layout-Token')
             self.send_header('Access-Control-Allow-Methods','GET, POST, OPTIONS')
             self.send_header('Access-Control-Allow-Private-Network','true')
@@ -149,7 +150,7 @@ def main():
         def do_OPTIONS(self):
             self.send_response(204); self.cors_headers(); self.end_headers()
         def authorized(self):
-            return self.headers.get('Host')==f"127.0.0.1:{config['port']}" and self.headers.get('X-Layout-Token')==config['token'] and self.headers.get('Origin','null') in ('null',f"http://127.0.0.1:{config['port']}",*config.get('allowedOrigins',[]))
+            return self.headers.get('Host')==f"127.0.0.1:{config['port']}" and self.headers.get('X-Layout-Token')==config['token'] and preview_origin_allowed(self.headers.get('Origin','null'), config)
         def do_GET(self):
             if self.path=='/notes-window':
                 self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Cache-Control','no-store');self.end_headers()

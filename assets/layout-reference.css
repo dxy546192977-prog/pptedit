@@ -36,6 +36,8 @@
 @media(max-width:600px){.layout-reference-fixed>form>header{padding:16px 16px 12px!important}.layout-reference-fixed>form>footer{padding:0 16px 12px}.layout-reference-scroll{padding:0 16px 16px}}
 .layout-reference-dialog [hidden]{display:none!important}
 .layout-reference-dialog select{font:inherit;color:inherit;background:#22272f;border:1px solid #647080;border-radius:6px;padding:8px 12px}
+.layout-reference-dialog select[data-mode]{appearance:none;-webkit-appearance:none;padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23e7eee9' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px 16px}
+@media(forced-colors:active){.layout-reference-dialog select[data-mode]{appearance:auto;-webkit-appearance:auto;background-image:none}}
 .layout-reference-dialog header>button::before,.layout-reference-dialog header>button::after{content:none!important;display:none!important}
 .notes-editor-dialog select{font:inherit;color:inherit;background:#22272f;border:1px solid #647080;border-radius:6px;padding:8px 12px}
 .layout-reference-dialog header,.layout-reference-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -43,7 +45,21 @@
 .layout-reference-dialog textarea{font:inherit;background:#09110c;color:inherit;border:1px solid #42634e;padding:10px;resize:vertical}
 .layout-reference-dialog [data-preview]{max-width:100%;max-height:260px;object-fit:contain;background:white}
 .layout-reference-hint,.layout-reference-dialog [data-status]{font-size:13px;line-height:1.6;color:#a9c4b1}
-.layout-reference-dialog [data-confirm]{background:#17562e;color:white}
+/* 主按钮：自包含品牌绿 CTA，显式覆盖全部交互态，避免被宿主 button 主题降级为黑/灰底低对比。 */
+.layout-reference-dialog [data-confirm]{
+  appearance:none;-webkit-appearance:none;
+  font:inherit;font-weight:600;line-height:1.2;
+  padding:8px 18px;border-radius:8px;
+  border:1px solid #029d4c;
+  background:#029d4c!important;color:#fff!important;
+  cursor:pointer;transition:background .15s ease,border-color .15s ease,box-shadow .15s ease}
+.layout-reference-dialog [data-confirm]:hover:not(:disabled){background:#03b457!important;border-color:#03b457}
+.layout-reference-dialog [data-confirm]:active:not(:disabled){background:#027a3b!important;border-color:#027a3b}
+/* 键盘聚焦：保留绿底白字，仅加环形高亮；鼠标点击后的 :focus 不再反色成黑底白字。 */
+.layout-reference-dialog [data-confirm]:focus{outline:none}
+.layout-reference-dialog [data-confirm]:focus-visible{outline:none;box-shadow:0 0 0 3px #029d4c66}
+.layout-reference-dialog [data-confirm]:disabled{background:#2a3a30!important;border-color:#3a4d40;color:#8fa89a!important;cursor:not-allowed;font-weight:500}
+@media(forced-colors:active){.layout-reference-dialog [data-confirm]{border:1px solid ButtonText}}
 .layout-reference-dialog .layout-design-switch{flex-direction:row;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer}
 .layout-design-switch input{appearance:none;width:36px;height:20px;border-radius:12px;background:#58625b;position:relative;flex:none;cursor:pointer}
 .layout-design-switch input:checked{background:#029d4c}

@@ -1,0 +1,24 @@
+/* Keep every toolbar action reachable as the available window narrows. */
+body.material-preview .toolbar.unified-toolbar { min-width: 0; }
+body.material-preview .toolbar.unified-toolbar .label { min-width: 0; flex: 1 1 0; overflow: hidden; }
+body.material-preview .toolbar.unified-toolbar .label strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.material-preview .toolbar.unified-toolbar > button { white-space: nowrap; }
+body.material-preview .toolbar.unified-toolbar .page-navigation { flex: 0 0 auto; }
+@media (max-width: 1500px) {
+  body.material-preview .toolbar.unified-toolbar { gap: 8px; }
+  body.material-preview .toolbar.unified-toolbar > button,
+  body.material-preview .toolbar.unified-toolbar .preview-mode-switch > button {
+    flex: 0 0 36px; width: 36px; height: 36px; min-height: 36px;
+    padding: 0; gap: 0; justify-content: center; font-size: 0;
+  }
+  body.material-preview .toolbar.unified-toolbar > button > span,
+  body.material-preview .toolbar.unified-toolbar .preview-mode-switch > button > span {
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  body.material-preview .toolbar.unified-toolbar .preview-mode-switch { margin-left: 0; padding-left: 8px; }
+}
+@media (max-width: 700px) {
+  body.material-preview .toolbar.unified-toolbar { flex-wrap: wrap; }
+  body.material-preview .toolbar.unified-toolbar .label { flex: 1 0 100%; padding-right: 92px; box-sizing: border-box; }
+}

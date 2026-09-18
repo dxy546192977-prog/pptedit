@@ -1,5 +1,12 @@
 .preview-mode-switch{display:flex;gap:2px;padding:3px;border:1px solid #ffffff18;border-radius:6px;flex-shrink:0}
-body.material-preview .preview-mode-switch button{flex:1;padding:7px 12px;border:0;border-radius:3px;background:transparent;color:var(--md-muted);font-size:12px}
+body.material-preview .preview-mode-switch button{flex:1;justify-content:center;padding:7px 12px;border:0;border-radius:3px;background:transparent;color:var(--md-muted);font-size:12px;white-space:nowrap;min-width:0}
+body.material-preview .preview-mode-switch button>span{overflow:hidden;text-overflow:ellipsis}
+/* 右栏收窄（≤1100px 时为 176px）后两个中文词会被拆成竖排，改为只显示图标。 */
+@media (max-width: 1100px){
+  body.material-preview .preview-mode-switch button{flex:1 1 0;padding:9px 0}
+  body.material-preview .preview-mode-switch button>span{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+  body.material-preview .preview-mode-switch button::before{margin:0}
+}
 body.material-preview .preview-mode-switch button[aria-pressed=true]{background:#ffffff0c;color:var(--md-on-surface)}
 .preview-mode-status{font-size:11px;line-height:1.6;color:#b3bbc8;margin:0;overflow-wrap:anywhere}.preview-mode-status:empty{display:none}
 .pptedit-overlay{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;background:#121417;color:#e4e7ed}

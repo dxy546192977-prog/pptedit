@@ -1,5 +1,6 @@
 """Local PPTedit adapter: edit only SVGs referenced by one configured deck."""
 import argparse
+from preview_origin import preview_origin_allowed
 import copy
 import hashlib
 import json
@@ -49,6 +50,99 @@ def validate_svg(text, original):
                 raise ValueError('SVG 含不支持的事件或脚本')
 
 
+PAGE_NUMBER_RE = __import__('re').compile(r'(<text\b[^>]*\bid="page-number"[^>]*>)(.*?)(</text>)', __import__('re').S)
+PAGE_DIGITS_RE = __import__('re').compile(r'(>\s*)(\d{1,3})(\s*<)')
+
+def renumber_svg_text(text, number):
+    """把 SVG 里 <text id="page-number"> 的显示数字改成 number（两位补零）。
+    只改数字文本节点，不重排 XML，不触碰其它内容；找不到唯一数字节点时返回原文。
+    返回 (new_text, changed: bool)。"""
+    label = str(number).zfill(2)
+    m = PAGE_NUMBER_RE.search(text)
+    if not m: return text, False
+    inner = m.group(2)
+    if '<' not in inner:
+        # <text id="page-number">04</text>
+        if inner.strip() == label: return text, False
+        if not inner.strip().isdigit(): return text, False
+        new_inner = inner.replace(inner.strip(), label, 1)
+    else:
+        # <text id="page-number"><tspan ...>04</tspan></text>：恰好一个数字文本节点才改
+        hits = list(PAGE_DIGITS_RE.finditer('>' + inner + '<'))
+        if len(hits) != 1: return text, False
+        if hits[0].group(2) == label: return text, False
+        wrapped = PAGE_DIGITS_RE.sub(lambda h: h.group(1) + label + h.group(3), '>' + inner + '<', count=1)
+        new_inner = wrapped[1:-1]
+    return text[:m.start(2)] + new_inner + text[m.end(2):], True
+
+def renumber_svgs(root, slides, backup_dir=None):
+    """按 slides 当前顺序校对每个 SVG 文件里烘焙的页码。返回 {'updated': [...], 'skipped': [...], 'missing': [...]}。
+    幂等：已一致的文件不写；写前把原文件复制到 backup_dir（若给出）。"""
+    report = {'updated': [], 'skipped': [], 'missing': [], 'revisions': {}}
+    for index, slide in enumerate(slides, start=1):
+        file = root / slide['file']
+        if not file.exists(): report['missing'].append(slide['page']); continue
+        original = file.read_text(encoding='utf-8-sig')
+        new_text, changed = renumber_svg_text(original, index)
+        if not changed:
+            if PAGE_NUMBER_RE.search(original) is None: report['skipped'].append(slide['page'])
+            continue
+        if backup_dir is not None:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file, backup_dir / file.name)
+        temporary = file.with_name(file.name + '.' + uuid.uuid4().hex + '.tmp')
+        temporary.write_text(new_text, encoding='utf-8')
+        temporary.replace(file)
+        report['updated'].append(slide['page'])
+        report['revisions'][str(slide['page'])] = revision(new_text)  # 让已打开该页的编辑器刷新乐观锁基线，避免下次保存 409
+    return report
+
+def audit_page_numbers(root, slides):
+    """只读校对：返回 [{page, expected, actual}] 中不一致的项（actual=None 表示文件无 page-number）。"""
+    problems = []
+    for index, slide in enumerate(slides, start=1):
+        file = root / slide['file']
+        if not file.exists(): problems.append({'page': slide['page'], 'expected': index, 'actual': None, 'reason': 'missing-file'}); continue
+        m = PAGE_NUMBER_RE.search(file.read_text(encoding='utf-8-sig'))
+        if not m: continue  # 该页设计上没有页码槽位，不算问题
+        digits = PAGE_DIGITS_RE.findall('>' + m.group(2) + '<') if '<' in m.group(2) else ([('', m.group(2).strip(), '')] if m.group(2).strip().isdigit() else [])
+        actual = int(digits[0][1]) if len(digits) == 1 else None
+        if actual != index: problems.append({'page': slide['page'], 'expected': index, 'actual': actual})
+    return problems
+
+def canonical_page(value):
+    """页 id 一律用数字：外部工具偶尔把 "28.2" 写成字符串，会让严格相等的章节树/侧栏悄悄丢页。"""
+    if isinstance(value, bool): return value
+    if isinstance(value, (int, float)): return value
+    if isinstance(value, str):
+        try:
+            n = float(value.strip())
+            return int(n) if n.is_integer() else n
+        except ValueError: return value
+    return value
+
+def canonical_pages(nodes):
+    for node in nodes:
+        if 'page' in node: node['page'] = canonical_page(node['page'])
+        elif isinstance(node.get('children'), list): canonical_pages(node['children'])
+    return nodes
+
+def navigation_pages(tree, depth=0):
+    if not isinstance(tree, list) or depth > 32 or len(tree) > 10000:
+        raise ValueError('章节树无效')
+    pages = []
+    for node in tree:
+        if not isinstance(node, dict): raise ValueError('章节节点无效')
+        if 'page' in node:
+            if set(node) != {'page'} or type(node['page']) not in (int, float): raise ValueError('章节页面无效')
+            pages.append(node['page'])
+        else:
+            if set(node) - {'key', 'title', 'subtitle', 'open', 'children'} or not isinstance(node.get('key'), str) or not isinstance(node.get('title'), str): raise ValueError('章节信息无效')
+            pages.extend(navigation_pages(node.get('children'), depth + 1))
+    if len(set(pages)) != len(pages): raise ValueError('章节页面重复')
+    return pages
+
+
 def run(config):
     root = Path(config['root']).resolve()
     assets = Path(__file__).resolve().parent.parent / 'assets'
@@ -73,7 +167,7 @@ def run(config):
             self.send_header('Cache-Control', 'no-store')
             origin = self.headers.get('Origin', 'null')
             allowed = ('null', f"http://127.0.0.1:{config['port']}", 'http://127.0.0.1:8771', 'http://127.0.0.1:8775')
-            self.send_header('Access-Control-Allow-Origin', origin if origin in allowed else 'null')
+            self.send_header('Access-Control-Allow-Origin', origin if preview_origin_allowed(origin, config, allowed) else 'null')
             self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-PPTedit-Token')
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
             super().end_headers()
@@ -101,6 +195,8 @@ def run(config):
             if request.path == '/health': return self.send_json(200, {'ready': True})
             if request.path == '/editor.html': file = assets / 'pptedit-frame.html'
             elif request.path == '/pptedit-frame.js': file = assets / 'pptedit-frame.js'
+            elif request.path == '/navigation-tree.js': file = assets / 'navigation-tree.js'
+            elif request.path == '/preview-navigation.css': file = assets / 'preview-navigation.css'
             elif request.path.startswith('/h5-editor/'):
                 name = request.path.removeprefix('/h5-editor/')
                 if name not in ('editor.js', 'editor.css', 'bootstrap.js'): return self.send_error(404)
@@ -119,20 +215,91 @@ def run(config):
             self.wfile.write(payload)
         def do_POST(self):
             endpoint = urlparse(self.path).path
-            if endpoint not in ('/save', '/reorder', '/delete-page'): return self.send_error(404)
+            if endpoint not in ('/save', '/reorder', '/delete-page', '/chapters', '/renumber'): return self.send_error(404)
             if not self.authorized(): return self.send_json(403, {'error': '未授权'})
             try:
                 size = int(self.headers.get('Content-Length', 0))
                 if not 0 < size < 80 * 1024 * 1024: raise ValueError('文档过大')
                 data = json.loads(self.rfile.read(size))
                 with lock:
+                    if endpoint == '/chapters':
+                        path = root / 'chapter-settings.json'
+                        original = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+                        if data.get('previous') != original:
+                            return self.send_json(409, {'error': '章节已被其他窗口修改，请刷新后重试'})
+                        settings = data.get('settings')
+                        if not isinstance(settings, dict) or len(settings) > 1000:
+                            raise ValueError('章节设置无效')
+                        for key, value in settings.items():
+                            if not isinstance(key, str) or len(key) > 1000 or not isinstance(value, dict):
+                                raise ValueError('章节设置无效')
+                            if key == '__navigation':
+                                if set(value) != {'tree'}: raise ValueError('章节树设置无效')
+                                navigation_pages(value['tree'])
+                                continue
+                            if set(value) - {'title', 'ungrouped', 'pages'} or ('title' in value and (not isinstance(value['title'], str) or not 0 < len(value['title'].strip()) <= 100)) or ('ungrouped' in value and type(value['ungrouped']) is not bool):
+                                raise ValueError('章节名称或分组设置无效')
+                            if 'pages' in value and (not isinstance(value['pages'], list) or not 2 <= len(value['pages']) <= 10000 or any(type(page) not in (int, float) for page in value['pages']) or len(set(value['pages'])) != len(value['pages'])):
+                                raise ValueError('子章节页面设置无效')
+                        index_path = root / 'index.html'
+                        original_index = index_path.read_text(encoding='utf-8-sig')
+                        updated_index = original_index
+                        if 'order' in data:
+                            start = original_index.index('const slides=') + len('const slides=')
+                            slides, length = json.JSONDecoder().raw_decode(original_index[start:])
+                            pages = [slide['page'] for slide in slides]
+                            order = data['order']
+                            if data.get('previousOrder') != pages:
+                                return self.send_json(409, {'error': '顺序已被其他窗口修改，请刷新后重试'})
+                            if not isinstance(order, list) or len(order) != len(pages) or any(type(page) not in (int, float) for page in order) or set(order) != set(pages):
+                                raise ValueError('分组顺序无效')
+                            if '__navigation' in settings and navigation_pages(settings['__navigation']['tree']) != order: raise ValueError('章节顺序与页面顺序不一致')
+                            by_page = {slide['page']: slide for slide in slides}
+                            updated_index = original_index[:start] + json.dumps([by_page[page] for page in order], ensure_ascii=False) + original_index[start + length:]
+
+                        if path.exists() or updated_index != original_index:
+                            backup = root / '制作源' / 'PPTedit备份' / (time.strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8])
+                            backup.mkdir(parents=True)
+                            if path.exists(): shutil.copy2(path, backup / path.name)
+                            if updated_index != original_index: shutil.copy2(index_path, backup / index_path.name)
+                        temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+                        temporary.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding='utf-8')
+                        index_temporary = index_path.with_name(index_path.name + '.' + uuid.uuid4().hex + '.tmp')
+                        try:
+                            if updated_index != original_index:
+                                index_temporary.write_text(updated_index, encoding='utf-8')
+                                index_temporary.replace(index_path)
+                            temporary.replace(path)
+                        except Exception:
+                            if updated_index != original_index:
+                                index_temporary.write_text(original_index, encoding='utf-8')
+                                index_temporary.replace(index_path)
+                            temporary.unlink(missing_ok=True)
+                            raise
+                        return self.send_json(200, {'saved': True})
+                    if endpoint == '/renumber':
+                        path = root / 'index.html'
+                        original = path.read_text(encoding='utf-8-sig')
+                        start = original.index('const slides=') + len('const slides=')
+                        slides, _ = json.JSONDecoder().raw_decode(original[start:])
+                        for s_ in slides: s_['page'] = canonical_page(s_['page'])
+                        problems = audit_page_numbers(root, slides)
+                        if not data.get('fix'):
+                            return self.send_json(200, {'total': len(slides), 'problems': problems})
+                        backup = root / '制作源' / 'PPTedit备份' / (time.strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8] + '-renumber') if problems else None
+                        report = renumber_svgs(root, slides, backup)
+                        return self.send_json(200, {'total': len(slides), 'problems': problems, 'renumber': report})
                     if endpoint in ('/reorder', '/delete-page'):
                         path = root / 'index.html'
                         original = path.read_text(encoding='utf-8-sig')
                         start = original.index('const slides=') + len('const slides=')
                         slides, length = json.JSONDecoder().raw_decode(original[start:])
+                        for s_ in slides: s_['page'] = canonical_page(s_['page'])
                         pages = [s['page'] for s in slides]
-                        order = data.get('order')
+                        order = [canonical_page(p) for p in data.get('order')] if isinstance(data.get('order'), list) else data.get('order')
+                        if isinstance(data.get('previousOrder'), list): data['previousOrder'] = [canonical_page(p) for p in data['previousOrder']]
+                        if isinstance(data.get('page'), str): data['page'] = canonical_page(data['page'])
+                        if isinstance(data.get('navigation'), list): canonical_pages(data['navigation'])
                         if endpoint == '/delete-page':
                             page = data.get('page')
                             if type(page) not in (int, float) or page not in pages:
@@ -146,14 +313,36 @@ def run(config):
                             return self.send_json(409, {'error': '顺序已被其他窗口修改，请刷新后重试'})
                         by_page = {s['page']: s for s in slides}
                         updated = original[:start] + json.dumps([by_page[p] for p in order], ensure_ascii=False) + original[start + length:]
-                        if updated != original:
+                        navigation = data.get('navigation')
+                        settings_path = root / 'chapter-settings.json'
+                        settings = json.loads(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else {}
+                        if navigation is not None:
+                            if navigation_pages(navigation) != order: raise ValueError('章节顺序与页面顺序不一致')
+                            settings['__navigation'] = {'tree': navigation}
+                        if updated != original or navigation is not None:
                             backup = root / '制作源' / 'PPTedit备份' / (time.strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8])
                             backup.mkdir(parents=True)
                             shutil.copy2(path, backup / path.name)
+                            if settings_path.exists(): shutil.copy2(settings_path, backup / settings_path.name)
                             temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
                             temporary.write_text(updated, encoding='utf-8')
-                            temporary.replace(path)
-                        return self.send_json(200, {'order': order})
+                            settings_temp = settings_path.with_name(settings_path.name + '.' + uuid.uuid4().hex + '.tmp')
+                            try:
+                                if navigation is not None: settings_temp.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding='utf-8')
+                                temporary.replace(path)
+                                if navigation is not None: settings_temp.replace(settings_path)
+                            except Exception:
+                                temporary.write_text(original, encoding='utf-8'); temporary.replace(path)
+                                settings_temp.unlink(missing_ok=True)
+                                raise
+                        # 顺序已落盘：把每个 SVG 里烘焙的页码同步到新位置（含被删页之后所有页）。
+                        # 失败不回滚顺序（顺序才是事实源），只在响应里报告，前端据此提示。
+                        renumber = {'updated': [], 'skipped': [], 'missing': [], 'revisions': {}}
+                        try:
+                            renumber = renumber_svgs(root, [by_page[p] for p in order], backup if (updated != original or navigation is not None) else None)
+                        except Exception as error:
+                            renumber['error'] = str(error)
+                        return self.send_json(200, {'order': order, 'renumber': renumber})
                     path, slide = target(data['page'])
                     original = path.read_text(encoding='utf-8-sig')
                     if data.get('revision') != revision(original):

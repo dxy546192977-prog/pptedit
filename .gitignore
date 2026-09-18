@@ -14,3 +14,7 @@ __pycache__/
 # Local visual checks and raw recordings
 /*.png
 demo/media/*-raw.*
+
+# Local decks, exported business content and editor service credentials
+/output/
+*.local.json

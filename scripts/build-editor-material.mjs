@@ -34,7 +34,7 @@ add('rounded_corner', '#h5ve-f-corner-mode');
 add('rotate_right', '.h5ve-rotate-handle');
 add('lock', '.h5ve-aspect-lock[aria-pressed="true"]');
 add('lock_open', '.h5ve-aspect-lock[aria-pressed="false"]');
-for (const [kind, name] of Object.entries({ G:'layers', T:'title', '▧':'image', '◇':'shapes', '□':'rectangle' })) add(name, `.h5ve-element-icon[data-material-kind="${kind}"]`, true);
+for (const [kind, name] of Object.entries({ G:'layers', T:'title', '▧':'image', '▶':'video_library', '◇':'shapes', '□':'rectangle' })) add(name, `.h5ve-element-icon[data-material-kind="${kind}"]`, true);
 const dir = path.join(assets, 'material-symbols');
 await fs.mkdir(dir, { recursive: true });
 await Promise.all([...new Set(rules.map(r => r.name))].map(async name => {

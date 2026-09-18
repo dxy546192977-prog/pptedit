@@ -45,10 +45,44 @@
     border: 0;
     border-block: 1px solid #ffffff10;
   }
-  body.material-preview .unified-actions .narration-controls { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
-  body.material-preview .unified-actions .narration-controls #narration-play { width: 100%; padding: 0 12px; }
-  body.material-preview .unified-actions .narration-timeline { flex: 0 0 auto; width: 100%; gap: 4px; }
-  body.material-preview .unified-actions .narration-controls>select[data-rate] { width: 100%; max-width: none; height: 36px; padding: 0 8px; }
+  /* 右栏播放器：主操作（按钮）→ 辅助控件（进度条 + 倍速并排）→ 元信息（时间 / 状态）。
+     不改 DOM，用 grid 摆位；timeline 的两个子元素通过 display:contents 各归各位。 */
+  body.material-preview .unified-actions .narration-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "play play" "range rate" "time time";
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 10px;
+  }
+  body.material-preview .unified-actions .narration-controls #narration-play { grid-area: play; width: 100%; min-height: 40px; padding: 0 12px; }
+  body.material-preview .unified-actions .narration-timeline { display: contents; }
+  body.material-preview .unified-actions .narration-timeline>input[type="range"] { grid-area: range; width: 100%; min-width: 0; margin: 0; }
+  body.material-preview .unified-actions .narration-timeline>span { grid-area: time; justify-self: start; margin: -4px 0 0; font-size: 11px; letter-spacing: .02em; color: #8d9aab; font-variant-numeric: tabular-nums; }
+  body.material-preview .unified-actions .narration-controls>select[data-rate] {
+    grid-area: rate;
+    width: auto; max-width: none; min-width: 0;
+    height: 26px; padding: 0 22px 0 8px;
+    font-size: 11px; line-height: 26px;
+    color: #c7d2e0; background-color: #1e2530; border: 1px solid #ffffff14; border-radius: 6px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 3.5l3 3 3-3' fill='none' stroke='%238d9aab' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat; background-position: right 7px center;
+    appearance: none; -webkit-appearance: none;
+  }
+  body.material-preview .unified-actions .narration-controls>select[data-rate]:hover { border-color: #ffffff24; background-color: #232b38; }
+  body.material-preview .unified-actions .narration-controls>select[data-rate]:focus-visible { outline: 2px solid #029d4c66; outline-offset: 1px; }
+  /* 顶层任何后置的隐藏控件（options/隐藏按钮）不占格 */
+  body.material-preview .unified-actions .narration-controls>[hidden],
+  body.material-preview .unified-actions .narration-controls>.narration-options[hidden] { display: none; }
+  /* 状态提示：作为元信息挂在块底部，绿色小圆点 + 弱化文字，与控件同属一组 */
+  body.material-preview .unified-actions .narration-player>span:last-child:not(:empty) {
+    display: flex; align-items: flex-start; gap: 6px;
+    margin: 10px 0 0; padding: 0;
+    font-size: 11px; line-height: 1.45; color: #8d9aab;
+  }
+  body.material-preview .unified-actions .narration-player>span:last-child:not(:empty)::before {
+    content: ""; flex: 0 0 auto; width: 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: #029d4c; box-shadow: 0 0 0 3px #029d4c22;
+  }
   body.material-preview .unified-actions :is(#copy-svg, #layout-reference-open) { width: 100%; justify-content: flex-start; padding: 0 12px; }
   body.material-preview .unified-actions .action-overflow { width: 100%; }
   body.material-preview .unified-actions .action-overflow>button { width: 100%; justify-content: space-between; padding: 0 12px; }

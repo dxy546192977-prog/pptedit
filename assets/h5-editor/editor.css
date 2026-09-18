@@ -651,11 +651,53 @@ body.h5ve-active:not(.h5ve-picking) #deck > .slide[data-h5ve-slide-hidden="1"] {
 }
 
 .h5ve-elements-list {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
   padding: 8px 6px;
+}
+
+/* 拖动排序：单条按深度缩进的插入指示线（带左侧圆点，Figma 风格） */
+.h5ve-layer-drop-indicator {
+  position: absolute;
+  right: 6px;
+  height: 0;
+  border-top: 2px solid var(--h5ve-accent);
+  transform: translateY(-1px);
+  pointer-events: none;
+  z-index: 5;
+  transition: top 60ms linear, left 60ms linear;
+}
+
+.h5ve-layer-drop-indicator::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 2px solid var(--h5ve-accent);
+  background: #121419;
+  box-sizing: content-box;
+}
+
+.h5ve-layer-drop-indicator.is-noop {
+  opacity: 0.35;
+}
+
+.h5ve-layer-drop-indicator[hidden] {
+  display: none;
+}
+
+.h5ve-elements.is-layer-dragging .h5ve-element-item:hover {
+  background: transparent;
+}
+
+.h5ve-elements.is-layer-dragging .h5ve-element-item .h5ve-element-actions {
+  visibility: hidden;
 }
 
 .h5ve-element-item {
@@ -713,10 +755,15 @@ body.h5ve-active:not(.h5ve-picking) #deck > .slide[data-h5ve-slide-hidden="1"] {
 }
 
 .h5ve-element-item.drop-inside {
-  border-color: var(--h5ve-accent-border);
-  border-radius: 0;
-  background: rgba(124, 152, 246, 0.11);
-  box-shadow: inset 3px 0 0 var(--h5ve-accent);
+  border-color: var(--h5ve-accent);
+  border-radius: 6px;
+  background: rgba(124, 152, 246, 0.14);
+  box-shadow: inset 0 0 0 1px var(--h5ve-accent);
+}
+
+.h5ve-element-item.drop-invalid {
+  cursor: not-allowed;
+  background: rgba(255, 90, 90, 0.08);
 }
 
 .h5ve-layer-drag-preview {
