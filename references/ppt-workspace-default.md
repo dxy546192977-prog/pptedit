@@ -17,7 +17,7 @@
 ## 接入已有或新项目
 
 1. 优先复用目标项目已有的完整工作台。缺失时基于已确认框架创建目标项目的工作台，保留原文稿，并使用独立的页面清单和本地编辑服务配置。
-2. 相关资源包括 `assets/preview-workspace.*`、`preview-navigation.*`、`navigation-tree.js`、`preview-rail.css`、`preview-edit-mode.*`、`preview-page-numbers.js`、Material 样式与图标，以及 `pptedit-frame.*`、`scripts/serve-svg-editor.py`。`scripts/install-preview-workspace.mjs` 只安装外层部分资源，不能单独完成所有接入。
+2. 相关资源包括 `assets/preview-workspace.*`、`preview-navigation.*`、`preview-overview-drag.js`、`navigation-tree.js`、`preview-rail.css`、`preview-edit-mode.*`、`preview-page-numbers.js`、Material 样式与图标，以及 `pptedit-frame.*`、`scripts/serve-svg-editor.py`。`scripts/install-preview-workspace.mjs` 为已有完整工作台同步全部 assets；不创建业务页面或本机服务配置。更新后重启最新仓库的编辑服务并强制刷新浏览器缓存。
 3. HTML Deck 需要先生成逐页原生 SVG，并核对字体、坐标、图片和画布尺寸；不能整页截图后包装成 SVG。特别检查编辑器缩放是否重复计入字号、字距和基线。确认导出后，让预览和编辑共享同一套 SVG；说明后续编辑作用于 SVG 工作稿，不暗示会自动回写原 HTML。
 4. 不复制其他项目的讲稿、媒体、服务凭证或页面 ID；为目标项目建立自己的配置，端口按当前可用情况选择。
 5. 在浏览器里核对完整框架，验证选页 → 编辑 → 保存并返回预览，以及复制 SVG；至少抽查封面和一张内容页的实际画面。交付可点击工作台地址，并让工作台保持打开。

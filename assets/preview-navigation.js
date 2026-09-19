@@ -423,7 +423,7 @@
   }
   // 预览态直接拖动缩略图排序（含跨层级）。持久化复用编辑服务的 /reorder，
   // 成功后与编辑器回传 pptedit-reordered 时走同一条刷新链路。
-  import('./preview-nav-drag.js').then(({ installNavDrag }) => {
+  import('./preview-nav-drag.js').then(async ({ installNavDrag }) => {
     let statusEl = nav.parentElement?.querySelector('.nav-drag-status');
     if (!statusEl) {
       statusEl = document.createElement('p');
@@ -439,7 +439,7 @@
       statusEl.hidden = !text;
       if (text && !/失败|正在/.test(text)) statusTimer = setTimeout(() => { statusEl.hidden = true; }, 2200);
     };
-    installNavDrag({
+    const dragOptions = {
       nav, slides, host, setStatus,
       getTree: () => host.getNavigation().tree,
       persist: async ({ order, previousOrder, navigation }) => {
@@ -469,7 +469,10 @@
         host.goTo(slides.findIndex(slide => slide.page === current));
         revealCurrent();
       },
-    });
+    };
+    installNavDrag(dragOptions);
+    const { installOverviewDrag } = await import('./preview-overview-drag.js');
+    installOverviewDrag(dragOptions);
   });
   chapterDialog.querySelector('form').onsubmit = event => { event.preventDefault(); void saveChapter(); };
   chapterDialog.querySelector('[data-ungroup]').onclick = () => void saveChapter(true);

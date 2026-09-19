@@ -53,11 +53,15 @@ export function groupInTree(tree, order, pages, key, title) {
  */
 export function moveToTreePosition(tree, moving, parentKey, index) {
   const copy = structuredClone(tree);
+  let movingNode;
   const remove = nodes => { for (let i = nodes.length - 1; i >= 0; i--) {
-    if (nodes[i].page === moving) nodes.splice(i, 1);
-    else if (nodes[i].children) remove(nodes[i].children);
+    const n = nodes[i];
+    if (('page' in n && n.page === moving) || (!('page' in n) && n.key === moving)) {
+      movingNode = nodes.splice(i, 1)[0];
+    } else if (n.children) remove(n.children);
   }};
   remove(copy);
+  if (!movingNode) return null;
   const findParent = nodes => { for (const node of nodes) {
     if (!node.children) continue;
     if (node.key === parentKey) return node.children;
@@ -66,7 +70,7 @@ export function moveToTreePosition(tree, moving, parentKey, index) {
   const target = parentKey == null ? copy : findParent(copy);
   if (!target) return null;
   const at = Math.max(0, Math.min(index, target.length));
-  target.splice(at, 0, { page: moving });
+  target.splice(at, 0, movingNode);
   const order = treePages(copy);
   return { tree: normalizeTree(copy, order), order };
 }

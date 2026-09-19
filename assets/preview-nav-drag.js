@@ -38,7 +38,7 @@ export function installNavDrag({ nav, slides, host, getTree, persist, onApplied,
   let suppressClickUntil = 0;
   let saving = false;
 
-  const rowOf = target => target?.closest?.('#nav .slide-link');
+  const rowOf = target => target?.closest?.('#nav .slide-link, #nav details');
   const summaryOf = target => target?.closest?.('#nav details > summary');
   const childrenOf = parent => [...parent.children].filter(el => el.matches('details, .slide-link'));
   const isOpen = details => details === nav || details.open;
@@ -53,7 +53,8 @@ export function installNavDrag({ nav, slides, host, getTree, persist, onApplied,
       for (const el of childrenOf(parent)) {
         if (el === drag.row) continue;
         if (el.matches('details')) {
-          out.push({ el: el.querySelector(':scope > summary'), kind: 'summary', details: el, parent });
+          const s = el.querySelector(':scope > summary');
+          if (s) out.push({ el: s, kind: 'summary', details: el, parent });
           if (el.open) walk(el);
         } else out.push({ el, kind: 'page', parent });
       }
@@ -70,7 +71,7 @@ export function installNavDrag({ nav, slides, host, getTree, persist, onApplied,
     let cursor = parent;
     while (cursor !== nav) {
       const up = cursor.parentElement.closest('details') || nav;
-      const siblings = childrenOf(up);
+      const siblings = childrenOf(up).filter(el => el !== drag.row);
       const next = siblings[siblings.indexOf(cursor) + 1] || null;
       list.push({ parent: up, before: next });
       if (next) break;
@@ -192,10 +193,16 @@ export function installNavDrag({ nav, slides, host, getTree, persist, onApplied,
     document.documentElement.classList.add('nav-page-sorting');
     const all = childrenOf(drag.row.parentElement);
     drag.origin = { parent: drag.row.parentElement, next: all[all.indexOf(drag.row) + 1] ?? null };
-    ghost.textContent = `${slides.findIndex(s => String(s.page) === drag.page) + 1}  ${drag.row.querySelector('.nav-slide-title')?.textContent || ''}`.trim();
+
+    if (drag.row.matches('.slide-link')) {
+      ghost.textContent = `${slides.findIndex(s => String(s.page) === drag.page) + 1}  ${drag.row.querySelector('.nav-slide-title')?.textContent || ''}`.trim();
+    } else {
+      ghost.textContent = `章节：${drag.row.querySelector(':scope > summary strong')?.textContent || ''}`.trim();
+    }
+
     ghost.hidden = false;
     nav.append(line);
-    setStatus?.('拖动到目标位置 · 松开放置 · Esc 取消');
+    setStatus?.('拖动调整顺序与层级 · 向左提升 · 松开放置');
     drag.raf = requestAnimationFrame(autoScroll);
   }
 
@@ -216,19 +223,19 @@ export function installNavDrag({ nav, slides, host, getTree, persist, onApplied,
   async function commit(plan) {
     // cleanup() 会把 drag 置空，所有依赖 drag 的量必须先算完。
     const row = drag.row;
-    const moving = Number(drag.page);
+    const moving = row.matches('.slide-link') ? Number(drag.page) : row.dataset.chapterKey;
     const parentKey = plan.parent === nav ? null : plan.parent.dataset.chapterKey;
     const siblings = childrenOf(plan.parent).filter(el => el !== row);
     const index = plan.before ? siblings.indexOf(plan.before) : siblings.length;
     cleanup();
     if (saving) return;
     saving = true;
-    setStatus?.('正在保存演讲顺序…');
+    setStatus?.('正在保存顺序…');
     try {
       const previousOrder = slides.map(slide => slide.page);
       const tree = getTree();
       const result = (await import('./navigation-tree.js')).moveToTreePosition(tree, moving, parentKey, index);
-      if (!result) throw new Error('目标章节不存在，请刷新后重试');
+      if (!result) throw new Error('目标位置无效，请刷新后重试');
       // 跨层级移动可能不改变扁平顺序（如从子章节末尾挪到父级紧随其后），只比顺序会漏掉结构变化。
       const sameOrder = result.order.every((page, i) => page === previousOrder[i]);
       const sameTree = JSON.stringify(result.tree) === JSON.stringify((await import('./navigation-tree.js')).normalizeTree(tree, previousOrder));
@@ -236,7 +243,7 @@ export function installNavDrag({ nav, slides, host, getTree, persist, onApplied,
       const saved = await persist({ order: result.order, previousOrder, navigation: result.tree });
       onApplied?.({ ...result, result: saved });
       const n = saved?.renumber?.updated?.length || 0;
-      setStatus?.(n ? `演讲顺序已保存 · 已校对 ${n} 页页码` : '演讲顺序已保存 · 可继续拖动');
+      setStatus?.(n ? `顺序已保存 · 已校对 ${n} 页页码` : '顺序已保存 · 可继续拖动');
     } catch (error) {
       setStatus?.(`排序失败：${error.message}`);
     } finally { saving = false; }
@@ -247,11 +254,29 @@ export function installNavDrag({ nav, slides, host, getTree, persist, onApplied,
     if (event.target.closest('.nav-chapter-edit, dialog')) return;
     const row = rowOf(event.target);
     if (!row) return;
-    drag = { page: row.dataset.page, row, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, active: false, plan: null, raf: 0, expandTimer: 0, expandTarget: null, touch: event.pointerType !== 'mouse' };
+    // 如果点的是 summary，确保它是 handle 而不是为了展开章节
+    if (row.matches('details') && !event.target.closest('summary')) return;
+
+    drag = {
+      page: row.dataset.page,
+      row,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      active: false,
+      plan: null,
+      raf: 0,
+      expandTimer: 0,
+      expandTarget: null,
+      touch: event.pointerType !== 'mouse'
+    };
     if (drag.touch) {
       drag.holdTimer = setTimeout(() => { if (drag && !drag.active) { row.setPointerCapture(event.pointerId); begin(); } }, HOLD_MS);
     }
   });
+
   nav.addEventListener('pointermove', event => {
     if (!drag || event.pointerId !== drag.pointerId) return;
     drag.lastX = event.clientX; drag.lastY = event.clientY;

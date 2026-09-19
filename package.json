@@ -8,7 +8,8 @@
   "scripts": {
     "check": "node --check assets/h5-editor/bootstrap.js && node --check assets/h5-editor/editor.js && node --check assets/narration/player.js && node --check scripts/install-narration.mjs && node --check demo/server.mjs && node --check scripts/install-h5-editor.mjs && node --check scripts/test-install-h5-editor.mjs && node --check scripts/test-demo-server.mjs && node --check scripts/test-layer-nested-group-browser.mjs && node --check scripts/test-preview-nav-drag-live.mjs && python3 scripts/test-renumber.py >/dev/null && node --input-type=module -e \"await import('./assets/preview-nav-drag.js'); await import('./assets/navigation-tree.js')\"",
     "demo": "node demo/server.mjs",
-    "test": "node scripts/test-install-h5-editor.mjs && node scripts/test-demo-server.mjs"
+    "test": "node scripts/test-install-h5-editor.mjs && node scripts/test-demo-server.mjs",
+    "test:overview": "node scripts/test-overview-drag-browser.mjs"
   },
   "engines": {
     "node": ">=20"
