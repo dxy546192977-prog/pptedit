@@ -18,6 +18,8 @@ git clone https://github.com/dxy546192977-prog/pptedit.git ~/.codex/skills/h5-ed
 
 ## 演示
 
+Figma 原稿读取的连接、校验与排障方式见 [Figma 导入说明](references/figma-import.md)。
+
 ![PPTedit 自动播放演示](demo/media/pptedit-demo.gif)
 
 [观看高清 MP4](demo/media/pptedit-demo.mp4)

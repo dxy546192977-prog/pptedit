@@ -1,3 +1,21 @@
+/* Escape toggles the preview overview; dialogs and editing keep priority. */
+(() => {
+  const overview = document.getElementById('overview');
+  const open = document.getElementById('show-overview');
+  const close = document.getElementById('close-overview');
+  if (!overview || !open || !close) return;
+  open.title = '总览（Esc）';
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || event.defaultPrevented || event.repeat ||
+        event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    if (document.fullscreenElement || document.querySelector('dialog[open], .pptedit-overlay:not([hidden])') ||
+        event.target.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), .action-overflow')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    (overview.hidden ? open : close).click();
+  }, true);
+})();
+
 /* Resizable speaker notes; preserve the slide's design aspect ratio. */
 (() => {
   const notes = document.getElementById('notes');

@@ -36,6 +36,20 @@
 
 播放器通过 `narration/live.js` 读取任务状态及最新缓存清单，可在 file URL 下加载。生成中禁用旧音频；缓存就绪后自动启用播放。同一音频未变化时不能因轮询打断播放。若打开的页面仍是旧讲稿，提示刷新读取最新内容，不能把新语音配到旧文案上。
 
-## 验收
+## Apple Silicon Mac 本地生成
+
+`generate-narration.py` 支持配置 `backend: "mlx"`，通过 `mlx-audio` 在 Apple GPU 上运行 Qwen3-TTS CustomVoice，继续使用 `Aiden` 和原讲稿风格。Windows 默认 `cuda` 路径保持不变。Mac 使用独立 Python 3.12 环境安装 `mlx-audio soundfile filelock`，模型下载到运行时目录，不放进项目仓库。依赖和模型来源为 PyPI `mlx-audio` 与 Hugging Face `mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit`。
+
+复制 Windows 配置为 `narration-config.mac.local.json`，设置当前 Mac 的 `html`、`model` 路径，以及 `backend: "mlx"`、`batchSize: 1`、`stateFilename: "watch-state.mac.json"`。设置 `generateMissing: true` 时，监听器启动会排队生成无匹配讲稿音频的页面；已有匹配音频会保留。之后保存改稿继续防抖生成。用 `--pages 24.3` 可单独生成小数内部页号，不能误用界面显示的顺序页码。
+
+先用该环境的 Python 执行 `scripts/generate-narration.py --html <index.html> --model <模型目录> --config <Mac配置> --pages <内部页号>` 验证真实音频，再启动 `scripts/watch-narration.py --config <Mac配置>`。需登录自动恢复时，以用户 LaunchAgent 运行监听器；不要同时运行第二个监听器。主观声音效果与 Windows 可能略有差异，需实际试听。
+
+## 生成验收
+
+### 逐字定位
+
+Mac 使用 `scripts/align-narration.py --config <Mac配置> --watch` 对现有音频持续补齐时间点。配置 `alignmentModel` 为本地 `mlx-community/Qwen3-ForcedAligner-0.6B-8bit` 模型目录；时间数据写入 `narration/alignment.json` 和 `alignment.js`，以音频文件名及完整 notes 校验，不修改音频。生成服务与对齐服务各自有单实例锁；可用 `--pages <内部页号>` 单页验收。原稿中的加粗、标点、舞台停顿必须保留显示，但不错误映射成发音字符。
+
+网页在 player.js 之前加载 alignment.js 和 `assets/narration/characters.js` 的运行副本。中文按对齐模型的字级时间定位；英文与数字按词内细分、极短字共享边界在相邻发音区间内细分，不能宣称逐音素精确。没有对齐数据时不伪造均匀时间点。当前字 opacity 为 1，其余字为 .4，RAF 跟随 audio.currentTime；滚动仅调整讲稿容器，单字点击从该字的 start 播放，空格仍用于暂停或继续。`node scripts/test-narration-characters.mjs` 验证字级点击、粗体、静音区间、标点及滚动。
 
 先生成短页和长页，再生成全部。检查自然度、漏字/重复、英文缩写、长句及停顿；至少核对首尾和总时长，检查音频有效且没有削波。验证暂停/续播、翻页中止、连续翻页、拖动进度、文稿过期与文件缺失提示。不能将波形有效或脚本检查通过等同于主观听感已验收。

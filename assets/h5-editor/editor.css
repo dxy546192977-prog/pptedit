@@ -3327,8 +3327,8 @@ html.h5ve-space-pan #h5ve-selection-layer {
 .h5ve-side-head .h5ve-brand-subtitle { display: none; }
 .h5ve-side-head .h5ve-actions .h5ve-btn {
   background: transparent;
-  border-color: transparent;
-  color: var(--h5ve-muted);
+  border: 1px solid var(--h5ve-border-strong);
+  color: var(--h5ve-text);
   border-radius: 4px;
 }
 .h5ve-side-head .h5ve-actions .h5ve-btn:hover {
@@ -3336,8 +3336,6 @@ html.h5ve-space-pan #h5ve-selection-layer {
   color: var(--h5ve-text);
 }
 .h5ve-side-head .h5ve-actions [data-action="export"] {
-  color: var(--h5ve-text);
-  border-color: var(--h5ve-border-strong);
   order: -1;
 }
 .h5ve-side-head .h5ve-actions .h5ve-mode-action.active { color: var(--h5ve-accent); }
@@ -3400,3 +3398,6 @@ html.h5ve-space-pan #h5ve-selection-layer {
 }
 .h5ve-slide-palette button:hover,
 .h5ve-slide-palette button:focus-visible { outline: 2px solid var(--h5ve-accent); outline-offset: 2px; }
+.h5ve-root [data-action="download-video"][hidden] {
+  display: none !important;
+}

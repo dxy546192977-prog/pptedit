@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import xml.etree.ElementTree as ET
 import importlib.util
 import local_codex
+import local_notes
 from preview_origin import preview_origin_allowed
 import figma_reference
 from PIL import Image
@@ -103,7 +104,8 @@ def main():
             if reference:
                 (folder/'request.json').write_text(json.dumps({'instruction':instruction,'sourceUrl':reference['sourceUrl'],'mode':mode,'page':item['page'],'respectDesign':job['respectDesign']},ensure_ascii=False),encoding='utf-8')
                 job.update(state='running',message='正在读取 Figma 指定节点与原始素材…')
-                exported,data=figma_reference.read_node(config,folder,reference)
+                exported,data=figma_reference.read_node(config,folder,reference,
+                    progress=lambda message:job.update(message=message))
                 if mode=='exact':
                     before=ET.fromstring(original);after=figma_reference.validate(exported)
                     def dimensions(node):
@@ -132,7 +134,10 @@ def main():
             temporary=target.with_suffix('.layout.tmp'); temporary.write_text(output,encoding='utf-8'); temporary.replace(target)
             (folder/'after.svg').write_text(output,encoding='utf-8')
             job.update(state='done',message='版式已更新，原版已备份',revision=str(time.time_ns()))
-        except Exception as error: job.update(state='error',message=str(error))
+        except Exception as error:
+            job.update(state='error',message=str(error))
+            if isinstance(error,figma_reference.figma_mcp.FigmaConnectionError):
+                job['errorCode']='figma_connection'
         finally:
             (folder/'status.json').write_text(json.dumps(job,ensure_ascii=False),encoding='utf-8')
     class Handler(BaseHTTPRequestHandler):
@@ -157,7 +162,9 @@ def main():
                 self.wfile.write((Path(__file__).parent.parent/'assets/notes-window.html').read_bytes());return
             if not self.authorized(): return self.send(403,{'message':'未授权'})
             if self.path=='/notes-state':return self.send(200,{'slides':slides(html)})
-            if self.path=='/health': return self.send(200,{'ready':True})
+            if self.path=='/health': return self.send(200,{'ready':True,'figmaTransport':'native-mcp-v1'})
+            if self.path=='/notes-providers':
+                return self.send(200,{'default':config.get('notesProvider','codex'),'providers':[local_notes.availability(config),{'id':'codex','label':'Codex','available':True,'message':'使用当前 Codex 登录账号'}]})
             if self.path=='/history':
                 records=[]
                 for folder in sorted(work.iterdir(),key=lambda p:p.stat().st_mtime,reverse=True):
@@ -201,13 +208,16 @@ def main():
                     item=next(s for s in slides(html) if s['page']==body['page'])
                     draft=body.get('draft','')
                     mode=body.get('mode','draft')
+                    provider=body.get('provider',config.get('notesProvider','codex'))
+                    if provider not in ('qwen','codex'):raise ValueError('讲稿模型无效')
+                    if provider=='qwen' and not local_notes.availability(config)['available']:raise ValueError(local_notes.availability(config)['message'])
                     if mode not in ('draft','instruction'):raise ValueError('修改方式无效')
                     if not isinstance(draft,str) or not draft.strip() or len(draft)>20000:raise ValueError('请输入讲稿，最多 20000 字')
                     if body.get('baseNotes')!=item['notes']:raise ValueError('讲稿已更新，请刷新后合并；当前输入不要丢弃')
                     with lock:
                         if any(j['state'] in ('queued','running') and j['page']==item['page'] for j in jobs.values()):return self.send(409,{'message':'当前页已有任务，请等待完成'})
                         job={'id':uuid.uuid4().hex,'page':item['page'],'state':'queued','message':'讲稿待优化','createdAt':time.time(),'kind':'notes'};jobs[job['id']]=job
-                        threading.Thread(target=notes_editor.run,args=(job,config,item,draft,work/job['id'],mode),daemon=True).start()
+                        threading.Thread(target=notes_editor.run,args=(job,config,item,draft,work/job['id'],mode,provider),daemon=True).start()
                     return self.send(202,job)
                 reference=figma_reference.parse_url(str(body.get('sourceUrl','')))
                 mode=body.get('mode','exact' if reference else 'style')

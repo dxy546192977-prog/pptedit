@@ -24,6 +24,13 @@ def snapshot(html, config):
     hashes = {str(s['page']):hashlib.sha256(json.dumps([s['notes'],voice],ensure_ascii=False).encode()).hexdigest() for s in slides}
     return slides, hashes
 
+def current_audio(record, slide, html, config):
+    if not record or not slide or record.get('notes') != slide['notes']:
+        return False
+    model_key = 'mlx:' + config['model'] if config.get('backend') == 'mlx' else str(Path(config['model']).resolve())
+    digest = hashlib.sha256(json.dumps([slide['notes'], config.get('speaker','Aiden'), config.get('style',generator.STYLE), 2, model_key],ensure_ascii=False).encode()).hexdigest()
+    return record.get('hash') == digest and (html.parent/record['file']).exists()
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--config',required=True,type=Path)
@@ -40,11 +47,18 @@ def main():
     except Timeout:
         print('Watcher already running',flush=True)
         return
-    state_path=output/'watch-state.json'
+    state_path=output/config.get('stateFilename','watch-state.json')
     slides,current=snapshot(html,config)
     saved=read_json(state_path,{})
     seen=saved.get('seen',current)
     dirty={p:info for p,info in saved.get('dirty',{}).items() if p in current}
+    if config.get('generateMissing',False):
+        records=read_json(output/'manifest.json',{'slides':{}}).get('slides',{})
+        for slide in slides:
+            matching=next((r for r in records.values() if r.get('notes')==slide['notes'] and (html.parent/r['file']).exists()),None)
+            if not matching:
+                page=str(slide['page'])
+                dirty.setdefault(page,{'hash':current[page],'attempts':0})
     jobs={p:{'state':'queued'} for p in dirty}
     # First install observes future saves; it does not silently approve/rebuild a pending voice choice.
     process=None
@@ -79,6 +93,14 @@ def main():
                 # Editors may temporarily truncate/replace the file; never synthesize a partial save.
                 last_error=str(error)
                 deadline=now+float(config.get('debounceSeconds',4))
+            if process:
+                # Publish each finished page without waiting for the entire queue.
+                completed=read_json(output/'manifest.json',{'slides':{}}).get('slides',{})
+                for slide in slides:
+                    page=str(slide['page'])
+                    if page in dirty and current_audio(completed.get(page),slide,html,config):
+                        del dirty[page]
+                        jobs[page]={'state':'ready'}
             if process and process.poll() is not None:
                 code=process.returncode
                 log.close()
@@ -88,7 +110,7 @@ def main():
                         continue
                     record=manifest.get('slides',{}).get(page)
                     slide=next((s for s in slides if str(s['page'])==page),None)
-                    if code==0 and record and slide and record['notes']==slide['notes'] and (html.parent/record['file']).exists():
+                    if current_audio(record,slide,html,config):
                         del dirty[page]
                         jobs[page]={'state':'ready'}
                     else:

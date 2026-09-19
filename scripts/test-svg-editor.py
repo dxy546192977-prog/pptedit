@@ -57,6 +57,15 @@ with tempfile.TemporaryDirectory(prefix='pptedit-svg-test-') as temporary:
         state = json.loads(payload)
         assert state['svg'] == original
         assert state['slides'] == [{'page': 4, 'title': 'Test', 'file': 'page.svg'}]
+        rename = {'page': 4, 'previousTitle': 'Test', 'title': 'New </script> title'}
+        assert request('/rename-page', rename, token=False)[0] == 403
+        assert request('/rename-page', {**rename, 'title': '   '})[0] == 400
+        assert request('/rename-page', {**rename, 'page': 999})[0] == 400
+        assert request('/rename-page', rename)[0] == 200
+        assert '</script>' not in (root / 'index.html').read_text(encoding='utf-8')
+        assert json.loads(request('/state?page=4')[1])['slides'][0]['title'] == rename['title']
+        assert request('/rename-page', rename)[0] == 409
+        assert request('/rename-page', {'page': 4, 'previousTitle': rename['title'], 'title': 'Test'})[0] == 200
         assert request('/editor.html')[0] == 200
         assert request('/h5-editor/editor.js')[0] == 200
         changed = original.replace('Before', 'After')

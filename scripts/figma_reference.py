@@ -2,9 +2,49 @@
 import base64
 import json
 import re
+import subprocess
+import io
+from pathlib import Path
 from urllib.parse import urlsplit, parse_qs, quote
 import xml.etree.ElementTree as ET
 import local_codex
+import figma_mcp
+from PIL import Image
+
+
+def screenshot_bytes(result,folder):
+    """Figma may return inline PNG data or a short-lived native asset URL."""
+    for content in result.get('content',[]):
+        if content.get('type')=='image' and content.get('mimeType')=='image/png':
+            data=base64.b64decode(content['data'],validate=True)
+            break
+        if content.get('type')!='text':continue
+        try:value=json.loads(content['text'])
+        except ValueError:continue
+        if not isinstance(value,dict) or not value.get('image_url'):continue
+        url=value['image_url'];parts=urlsplit(url)
+        if (parts.scheme!='https' or parts.hostname not in ('www.figma.com','figma.com')
+                or parts.username or parts.password or parts.port not in (None,443)
+                or not re.fullmatch(r'/api/mcp/asset/[A-Za-z0-9_.-]+',parts.path)):
+            raise ValueError('Figma 截图地址无效，未修改当前页')
+        temporary=folder/'reference.download'
+        try:
+            # Python's default HTTP user agent can receive an empty 200 from this CDN.
+            process=subprocess.run(['curl','--fail','--location','--silent','--show-error',
+                '--proto','=https','--proto-redir','=https','--max-time','30',
+                '--max-filesize','20000000','--output',str(temporary),url],capture_output=True,timeout=35)
+            if process.returncode:raise ValueError('Figma 截图下载失败，请检查网络后重试；当前页未修改')
+            data=temporary.read_bytes()
+        finally:
+            temporary.unlink(missing_ok=True)
+        break
+    else:raise ValueError('Figma 未返回有效节点截图；当前页未修改')
+    if not data.startswith(b'\x89PNG\r\n\x1a\n') or len(data)>20_000_000:
+        raise ValueError('Figma 截图不是有效 PNG；当前页未修改')
+    with Image.open(io.BytesIO(data)) as picture:
+        if picture.width*picture.height>25_000_000:raise ValueError('Figma 截图像素过大')
+        picture.verify()
+    return data
 
 
 def parse_url(url):
@@ -80,35 +120,51 @@ def exported_payload(events,reference):
     return {**reference,'svg':full,'png':png}
 
 
-def read_node(config,folder,reference):
-    prompt=('这是 Figma 原始节点读取任务，不是重新设计。只允许读取，不修改 Figma 或本地文件。'
-            '使用 Figma MCP，先按 figma-design-to-code skill 读取指定 fileKey/nodeId 的 get_design_context；'
-            '然后按 figma-use skill 使用 use_figma，在同一文件读取该节点并调用原生 exportAsync，'
-            '导出 SVG_STRING（svgOutlineText:true，保证字体外观；svgIdAttribute:true）。'
-            'hasMissingFont 仅作诊断，不能据此直接中止：该标志可能与当前可用字体不一致。'
-            '导出前从所有 TEXT 的 getStyledTextSegments(["fontName"]) 收集去重后的实际 family/style，'
-            '调用 listAvailableFontsAsync 核对，并逐一 await figma.loadFontAsync(fontName)，即使 hasMissingFont 为 true 也必须先尝试加载。'
-            '若实际加载失败，返回具体 family/style、受影响节点 ID 和原始错误，停止且禁止替换字体。'
-            '全部实际字体加载成功后，即使 hasMissingFont 仍为 true 也继续原生 exportAsync；以加载及导出结果判断成功，不能再次按该标志拒绝。'
-            '每次 use_figma 分块导出调用都必须重新加载这些实际字体，因为调用间加载状态不保证保留。'
-            'SVG 必须使用原生导出的完整结果，不能手绘、简化、删除图层或把整页截图包进 SVG。'
-            '所有图片资源必须内嵌。另调用 get_screenshot 获取相同 fileKey/nodeId 的参考截图。不能只用桌面当前选择，因为必须核对文件。'
-            '无法读取、缺少工具或导出失败时返回 {"error":"具体原因"}，不能猜测或抓 og:image。'
-            '工具单次返回文本有限制，必须分块导出SVG。每块最多8000字符；首次可读SVG长度与块数，然后逐块调用 use_figma，重新export并 return {fileKey:"目标文件key",nodeId:node.id,index:从0开始的块号,total:Math.ceil(svg.length/8000),hash:对完整SVG计算FNV1a得到的32位无符号整数,chunk:svg.slice(index*8000,(index+1)*8000)}。'
-            'FNV1a算法：let h=2166136261; for(let i=0;i<svg.length;i++){h=Math.imul(h^svg.charCodeAt(i),16777619)>>>0;}。每一块都要完整返回，不能遗漏或只返回摘要。调用器从工具事件直接组装，不要在最终回复复述SVG。'
-            '最终仅返回 {"exportComplete":true} 或 {"error":"具体原因"}。'
-            '\n目标：'+json.dumps(reference,ensure_ascii=False))
-    result=folder/'figma-export.json'
-    local_codex.run(config,folder,prompt,result,json_events=True)
-    summary=json.loads(result.read_text(encoding='utf-8'))
-    if summary.get('error'):raise ValueError('Figma 节点读取失败：'+str(summary['error']))
-    value=exported_payload((folder/'codex.log').read_text(encoding='utf-8'),reference)
-    if (value.get('fileKey'),value.get('nodeId'))!=(reference['fileKey'],reference['nodeId']):
-        raise ValueError('Figma 返回的文件或节点不匹配，未修改当前页')
-    validate(value['svg'])
-    (folder/'figma-original.svg').write_text(value['svg'],encoding='utf-8')
-    png=base64.b64decode(value['png'],validate=True) if value.get('png') else None
-    if png:
-        if not png.startswith(b'\x89PNG\r\n\x1a\n'):raise ValueError('Figma 未返回有效节点截图')
-        (folder/'reference.png').write_bytes(png)
-    return value['svg'],png
+def read_node(config,folder,reference,progress=None):
+    """Import deterministic native tool output, never model-generated SVG or prose."""
+    local_codex.save_handoff(config,folder)
+    template=Path(__file__).with_name('figma-export.js').read_text(encoding='utf-8')
+    code=('const TARGET_NODE_ID='+json.dumps(reference['nodeId'])+';\n'
+          'const TARGET_FILE_KEY='+json.dumps(reference['fileKey'])+';\n'+template)
+    def arguments(index):
+        return {'fileKey':reference['fileKey'],'code':'const CHUNK_INDEX='+str(index)+';\n'+code,
+                'description':'只读导出 PPT 源节点的原生 SVG 分块 '+str(index),
+                'skillNames':'figma-use'}
+    def payload(result):
+        for content in result.get('content',[]):
+            if content.get('type')=='text':
+                try:value=json.loads(content['text'])
+                except ValueError:continue
+                if isinstance(value,dict) and 'chunk' in value:return value
+        raise ValueError('Figma 未返回完整原生 SVG 分块；当前页未修改')
+    if progress:progress('正在检查后台 Figma 连接与导出工具…')
+    with figma_mcp.Client(config,folder) as client:
+        metadata=payload(client.call('use_figma',arguments(-1)))
+        if (metadata.get('fileKey'),metadata.get('nodeId'))!=(reference['fileKey'],reference['nodeId']):
+            raise ValueError('Figma 返回的文件或节点不匹配，未修改当前页')
+        total=metadata.get('total');length=metadata.get('length')
+        if type(total) is not int or not 0<total<=2000 or type(length) is not int or not 0<length<=16_000_000:
+            raise ValueError('Figma SVG 大小无效或过大；当前页未修改')
+        chunks=[]
+        for start in range(0,total,4):
+            if progress:progress(f'正在读取 Figma 原生 SVG：{start}/{total} 块…')
+            indices=list(range(start,min(start+4,total)))
+            for index,result in zip(indices,client.call_many('use_figma',[arguments(i) for i in indices])):
+                part=payload(result)
+                if any(part.get(k)!=metadata.get(k) for k in ('fileKey','nodeId','hash','total','length')) or part.get('index')!=index:
+                    raise ValueError('Figma 导出期间节点发生变化或分块不匹配；当前页未修改，请重试')
+                if not isinstance(part.get('chunk'),str):raise ValueError('Figma SVG 分块无效')
+                chunks.append(part['chunk'])
+        svg=''.join(chunks).encode('utf-16-le',errors='surrogatepass').decode('utf-16-le')
+        encoded=svg.encode('utf-16-le');h=2166136261
+        for i in range(0,len(encoded),2):h=((h^int.from_bytes(encoded[i:i+2],'little'))*16777619)&0xffffffff
+        if length!=len(encoded)//2 or metadata.get('hash')!=h:
+            raise ValueError('Figma SVG 完整性校验失败，未修改当前页')
+        validate(svg)
+        if progress:progress('SVG 完整性校验通过，正在读取同节点截图…')
+        result=client.call('get_screenshot',{'fileKey':reference['fileKey'],'nodeId':reference['nodeId']})
+        png=screenshot_bytes(result,folder)
+    (folder/'figma-original.svg').write_text(svg,encoding='utf-8')
+    (folder/'reference.png').write_bytes(png)
+    (folder/'figma-export.json').write_text(json.dumps(metadata,ensure_ascii=False),encoding='utf-8')
+    return svg,png

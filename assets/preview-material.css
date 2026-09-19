@@ -27,7 +27,8 @@ body.material-preview button {
   font-weight: 500;
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
-body.material-preview button:not(:disabled):hover { background-color: var(--md-surface-high); }
+/* Component colors must win over this fallback, including filled/selected actions. */
+body.material-preview :where(button:not(:disabled):hover) { background-color: var(--md-surface-high); color: var(--md-on-surface); }
 body.material-preview :is(button, a, input, select, textarea, summary):focus-visible {
   outline: 3px solid var(--md-primary);
   outline-offset: 3px;
@@ -207,6 +208,9 @@ body.material-preview .layout-reference-dialog :is(textarea, input:not([type=che
   line-height: 1.6;
 }
 body.material-preview .layout-reference-dialog :is([data-save], [data-confirm]) { background: var(--md-primary); color: var(--md-on-primary); border: 0; }
+/* Keep filled actions legible when the generic button hover rule applies. */
+body.material-preview .layout-reference-dialog :is([data-save], [data-confirm]):not(:disabled):is(:hover, :focus-visible) { background-color: #bfd5f4; color: var(--md-on-primary); }
+body.material-preview .layout-reference-dialog :is([data-save], [data-confirm]):not(:disabled):active { background-color: #9bb8e2; color: var(--md-on-primary); }
 body.material-preview :is(.layout-reference-hint, .layout-reference-dialog details, .layout-reference-dialog [data-status]) { color: var(--md-muted); }
 body.material-preview .layout-reference-source [data-paste] { border-color: var(--md-outline); border-radius: 10px; color: var(--md-on-surface); }
 body.material-preview .layout-history { border-color: var(--md-outline-variant); }

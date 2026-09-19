@@ -1,6 +1,7 @@
 /* Keep the preview and each edited page alive so returning does not discard undo. */
 (() => {
-  const bar = document.querySelector('.bottom');
+  const toolbar = document.querySelector('.toolbar.unified-toolbar');
+  const bar = toolbar || document.querySelector('.bottom');
   const host = window.PPT_NARRATION_HOST;
   const config = window.PPTEDIT_PREVIEW_CONFIG;
   if (!bar || !host || !config || document.querySelector('.preview-mode-switch')) return;
@@ -18,7 +19,8 @@
   mode.setAttribute('aria-label', '页面模式');
   // 文案包在 <span> 里：小屏时只留图标，靠 aria-label/title 保住可访问名称。
   mode.innerHTML = '<button type="button" aria-pressed="true" aria-label="预览" title="预览"><span>预览</span></button><button type="button" aria-pressed="false" aria-label="编辑" title="编辑"><span>编辑</span></button>';
-  bar.prepend(mode);
+  if (toolbar) bar.append(mode);
+  else bar.prepend(mode);
   const [previewButton, editButton] = mode.children;
   const status = document.createElement('p');
   status.className = 'preview-mode-status';
@@ -130,7 +132,7 @@
           }
           frame.contentWindow.postMessage({
             type: 'pptedit-manifest', page: slide.page,
-            slides: host.getSlides().map(({page, title, file, previewMedia}) => ({page, title, file, previewMedia})), chapters, navigation: host.getNavigation?.()
+            slides: host.getSlides().map(({page, title, file, previewMedia, editorMedia}) => ({page, title, file, previewMedia, editorMedia})), chapters, navigation: host.getNavigation?.()
           }, origin);
         };
         frame.src = config.url + '/editor.html?edit=1&page=' + slide.page + '#token=' + encodeURIComponent(config.token) + '&parent=' + encodeURIComponent(/^https?:/.test(location.protocol) ? location.origin : 'null');

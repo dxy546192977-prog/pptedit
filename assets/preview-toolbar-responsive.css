@@ -19,6 +19,25 @@ body.material-preview .toolbar.unified-toolbar .page-navigation { flex: 0 0 auto
   body.material-preview .toolbar.unified-toolbar .preview-mode-switch { margin-left: 0; padding-left: 8px; }
 }
 @media (max-width: 700px) {
-  body.material-preview .toolbar.unified-toolbar { flex-wrap: wrap; }
+  body.material-preview .toolbar.unified-toolbar { flex-wrap: wrap; justify-content: flex-start; }
   body.material-preview .toolbar.unified-toolbar .label { flex: 1 0 100%; padding-right: 92px; box-sizing: border-box; }
+  body.material-preview .toolbar.unified-toolbar .label strong { max-width: none; line-height: 36px; }
+  body.material-preview .toolbar.unified-toolbar .page-navigation {
+    display: flex; align-items: center; gap: 4px; margin: 0; padding: 0 8px 0 0;
+  }
+  body.material-preview .toolbar.unified-toolbar .page-navigation button {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; min-width: 32px; height: 36px; min-height: 36px; padding: 0; border: 0;
+  }
+  body.material-preview .toolbar.unified-toolbar .page-navigation .counter { min-width: 52px; text-align: center; white-space: nowrap; font-size: 12px; }
 }
+#current-title[role="button"] { cursor: text; border-radius: 4px; }
+#current-title[role="button"]:hover { background: #ffffff08; }
+#current-title[role="button"]:focus-visible { outline: 2px solid #adc7ee; outline-offset: 2px; }
+.page-title-dialog { width: min(480px, calc(100vw - 32px)); box-sizing: border-box; padding: 24px; border: 1px solid #46505e; border-radius: 12px; background: #20252d; color: #e5e9ef; }
+.page-title-dialog::backdrop { background: #0008; }
+.page-title-dialog h3 { margin: 0 0 20px; }
+.page-title-dialog input { box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid #69788b; border-radius: 6px; background: #15191f; color: white; font: inherit; }
+.page-title-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.page-title-dialog button { padding: 8px 16px; border: 1px solid #556172; border-radius: 6px; background: #303b4b; color: white; cursor: pointer; }
+.page-title-dialog [role="status"] { color: #f1c5a6; font-size: 13px; }

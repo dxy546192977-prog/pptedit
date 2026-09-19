@@ -43,7 +43,8 @@
     slide.append(svg);
     // Preview videos use SVG poster images while editing. Keep their media identity
     // in editor-only metadata, which markup() strips before saving the SVG.
-    const previewMedia = source.slides.find(item => item.page === page)?.previewMedia || source.slide.previewMedia;
+    const pageMedia = source.slides.find(item => item.page === page) || source.slide;
+    const previewMedia = pageMedia.editorMedia || source.slide.editorMedia || pageMedia.previewMedia || source.slide.previewMedia;
     const mediaItems = Array.isArray(previewMedia) ? previewMedia : [previewMedia];
     const mediaPath = value => {
       try { return decodeURIComponent(new URL(value, location.origin + '/deck/').pathname); }
@@ -55,7 +56,10 @@
         const href = image.getAttribute('href') || image.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
         const matchesBounds = [['x', 'x'], ['y', 'y'], ['width', 'w'], ['height', 'h']]
           .every(([attr, key]) => Number.isFinite(media[key]) && image.hasAttribute(attr) && Math.abs(Number(image.getAttribute(attr)) - media[key]) < 0.01);
-        if ((href && mediaPath(href) === mediaPath(media.poster)) || matchesBounds) image.dataset.h5veMediaType = 'video';
+        if ((href && mediaPath(href) === mediaPath(media.poster)) || matchesBounds) {
+          image.dataset.h5veMediaType = 'video';
+          image.dataset.h5veVideoSrc = new URL(media.file, location.origin + '/deck/').href;
+        }
       }
     }
     if (svg.querySelector('#page-number')) svg.querySelector('#page-number').textContent = String(displayPage()).padStart(2, '0');

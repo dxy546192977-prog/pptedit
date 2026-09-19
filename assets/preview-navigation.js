@@ -44,6 +44,28 @@
   switcher.setAttribute('aria-label', '目录显示方式');
   switcher.innerHTML = '<button type="button" data-view="thumbnails" aria-pressed="true">缩略图</button><button type="button" data-view="outline" aria-pressed="false">大纲</button>';
   identity.append(switcher);
+  let keepCollapsed = store.get('nav-all-collapsed') === true;
+  const expansionToggle = document.createElement('button');
+  expansionToggle.type = 'button';
+  expansionToggle.className = 'nav-expansion-toggle';
+  expansionToggle.setAttribute('aria-controls', 'nav');
+  switcher.append(expansionToggle);
+  function syncExpansionToggle() {
+    const chapters = [...nav.querySelectorAll('details')];
+    const expanded = chapters.length > 0 && chapters.every(chapter => chapter.open);
+    expansionToggle.textContent = expanded ? '收起全部' : '展开全部';
+    expansionToggle.setAttribute('aria-expanded', String(expanded));
+    expansionToggle.title = expanded ? '收起子页面，仅保留主框架' : '展开所有章节和子页面';
+    expansionToggle.disabled = !chapters.length;
+  }
+  expansionToggle.addEventListener('click', () => {
+    const expand = expansionToggle.getAttribute('aria-expanded') !== 'true';
+    keepCollapsed = !expand;
+    store.set('nav-all-collapsed', keepCollapsed);
+    for (const chapter of nav.querySelectorAll('details')) chapter.open = expand;
+    rememberChapters();
+    syncExpansionToggle();
+  });
   const groups = [];
   let group;
   for (const child of [...nav.children]) {
@@ -187,7 +209,7 @@
     for (const details of nav.querySelectorAll('details')) {
       const active = details.contains(row);
       details.classList.toggle('current-chapter', active);
-      if (active && row.dataset.page !== preservedPage && !document.fullscreenElement) details.open = true;
+      if (active && !keepCollapsed && row.dataset.page !== preservedPage && !document.fullscreenElement) details.open = true;
     }
     if (document.fullscreenElement) return;
     const position = host.getIndex();
@@ -203,7 +225,7 @@
   }
   function setView(view) {
     nav.dataset.view = view === 'outline' ? 'outline' : 'thumbnails';
-    for (const button of switcher.children) button.setAttribute('aria-pressed', String(button.dataset.view === nav.dataset.view));
+    for (const button of switcher.querySelectorAll('[data-view]')) button.setAttribute('aria-pressed', String(button.dataset.view === nav.dataset.view));
     // Hidden outline thumbnails should not consume image loading bandwidth.
     revealCurrent();
   }
@@ -470,6 +492,8 @@
   new MutationObserver(revealCurrent).observe(document.getElementById('counter'), { childList: true, characterData: true, subtree: true });
   // 章节展开/收起（点击、键盘、revealCurrent 自动展开）都记住；build/restore 期间的默认值不算
   new MutationObserver(() => { if (!restoringChapters) rememberChapters(); }).observe(nav, { attributes: true, attributeFilter: ['open'], subtree: true });
+  new MutationObserver(syncExpansionToggle).observe(nav, { attributes: true, attributeFilter: ['open'], childList: true, subtree: true });
+  syncExpansionToggle();
   // 缩略图加载后行高才确定：首屏 revealCurrent 常在图片加载前跑，当前行会被顶出可视区 → 图片加载完再校正一次
   nav.addEventListener('load', event => {
     if (!(event.target instanceof HTMLImageElement)) return;

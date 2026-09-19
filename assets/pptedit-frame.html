@@ -88,7 +88,10 @@ html.h5ve-host { --h5ve-bg: #121417; }
 .h5ve-root :is(.h5ve-side-head, .h5ve-side-foot, .h5ve-slides-head, .h5ve-elements-head) { border-color: var(--h5ve-border); }
 .h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger, .h5ve-insert-trigger, .h5ve-align-btn, .h5ve-flow-btn, .h5ve-element-control, .h5ve-element-delete, .h5ve-zoom-controls button) { border-radius: 6px; }
 .h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger) { min-height: 32px; }
-.h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger, .h5ve-elements-actions button):not(:disabled):hover { background: var(--h5ve-panel-hover); color: var(--h5ve-text); }
+.h5ve-root :is(.h5ve-btn, .h5ve-icon-btn, .h5ve-command-trigger, .h5ve-elements-actions button):not(:disabled):not(.primary):not(.active):not(.danger):hover { background: var(--h5ve-panel-hover); color: var(--h5ve-text); }
+.h5ve-root .h5ve-btn.primary { background: var(--h5ve-accent); color: var(--h5ve-ink); border-color: var(--h5ve-accent); }
+.h5ve-root .h5ve-btn.primary:not(:disabled):is(:hover, :focus-visible) { background: #bfd5f4; color: var(--h5ve-ink); border-color: #bfd5f4; }
+.h5ve-root .h5ve-btn.primary:not(:disabled):active { background: #9bb8e2; color: var(--h5ve-ink); border-color: #9bb8e2; }
 .h5ve-root :is(.h5ve-btn.active, .h5ve-element-item.active, .h5ve-element-item.selected, .h5ve-flow-btn.is-active, .h5ve-align-btn.active) { background: var(--h5ve-accent-soft); color: #dbe7fa; border-color: var(--h5ve-accent-border); }
 .h5ve-root :is(.h5ve-number-control, .h5ve-dimension-control, .h5ve-elements-search, .h5ve-text-input) { border-radius: 6px; background: var(--h5ve-panel-raised); }
 .h5ve-root :is(.h5ve-context-menu, .h5ve-insert-menu, .h5ve-command-dialog, .h5ve-shortcut-dialog, .h5ve-version-dialog) { background: var(--h5ve-panel-raised); border-color: var(--h5ve-border-strong); border-radius: 10px; }

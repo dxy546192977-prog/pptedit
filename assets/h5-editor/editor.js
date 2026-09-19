@@ -3046,7 +3046,46 @@
     return path.reverse();
   }
 
+  function selectedVideoSource() {
+    if (state.selected.length !== 1) return '';
+    const el = state.primary;
+    return el?.dataset.h5veVideoSrc || (el?.tagName?.toLowerCase() === 'video'
+      ? el.currentSrc || el.src || el.querySelector('source')?.src : '') || '';
+  }
+
+  async function downloadSelectedVideo() {
+    const source = selectedVideoSource();
+    if (!source) return;
+    const button = editorRoot.querySelector('[data-action="download-video"]');
+    button.disabled = true;
+    const label = button.querySelector('[data-video-download-label]');
+    label.textContent = '正在下载…';
+    try {
+      const url = new URL(source, document.baseURI);
+      if (!['http:', 'https:', 'blob:', 'data:'].includes(url.protocol)) throw new Error('不支持的视频地址');
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('视频文件无法读取');
+      const blob = await response.blob();
+      const objectURL = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectURL;
+      link.download = decodeURIComponent(url.pathname.split('/').pop() || 'video.mp4');
+      editorRoot.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectURL), 60000);
+      showToast('已开始下载视频');
+    } catch (error) {
+      showToast('下载失败：' + error.message);
+    } finally {
+      button.disabled = false;
+      label.textContent = '下载视频';
+    }
+  }
+
   function renderSelectionPath() {
+    const download = editorRoot?.querySelector('[data-action="download-video"]');
+    if (download) download.hidden = !selectedVideoSource();
     if (!selectionPath) return;
     const page = Math.max(1, getCurrentSlideIndex() + 1);
     const hierarchy = state.selected.length === 1 ? selectionHierarchy(state.primary) : [];
@@ -8323,6 +8362,7 @@
 
   function bindUi() {
     editorRoot.querySelector('[data-action="screenshot"]')?.addEventListener("click", copyCurrentSlideScreenshot);
+    editorRoot.querySelector('[data-action="download-video"]')?.addEventListener("click", downloadSelectedVideo);
     sidebar.querySelector('[data-action="export"]')?.addEventListener("click", exportCurrentSlideSvg);
     sidebar.querySelector('[data-action="delete"]')?.addEventListener("click", deleteSelected);
     sidebar.querySelector('[data-action="group"]')?.addEventListener("click", groupSelection);
@@ -8529,13 +8569,16 @@
             <div class="h5ve-status">未选中</div>
             <div class="h5ve-save-state" data-state="saved"><span class="h5ve-save-dot"></span><span class="h5ve-save-label">已保存</span></div>
           </div>
-          <nav class="h5ve-selection-path" aria-label="选中元素层级"></nav>
           <div class="h5ve-actions">
             <button type="button" class="h5ve-btn h5ve-screenshot-action" data-action="screenshot" title="复制当前页 2× 高清 PNG，可直接粘贴到文档">
               <svg class="h5ve-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M8 6l1.3-2h5.4L16 6"/><circle cx="12" cy="12.5" r="3.2"/></svg>
               <span data-screenshot-label>复制当前页截图</span>
             </button>
             <button type="button" class="h5ve-btn" data-action="export" title="复制当前页原生矢量 SVG，到 Figma 直接粘贴即可编辑">复制 SVG</button>
+            <button type="button" class="h5ve-btn" data-action="download-video" hidden style="grid-column:1 / -1" title="下载所选视频的原文件">
+              <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" focusable="false"><path d="M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 200ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/></svg>
+              <span data-video-download-label>下载视频</span>
+            </button>
           </div>
         </div>
         <div id="h5ve-panel" class="h5ve-panel-body">

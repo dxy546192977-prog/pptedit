@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import time
 import atexit
+from contextlib import nullcontext
 
 MODEL_KEY = 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'
 
@@ -69,14 +70,16 @@ def main():
     parser.add_argument('--plan', action='store_true')
     parser.add_argument('--batch-size', type=int, default=4)
     parser.add_argument('--config', type=Path, help='Local voice configuration JSON')
+    parser.add_argument('--backend', choices=['cuda', 'mlx'], default='cuda')
     args = parser.parse_args()
     if args.config:
         config = json.loads(args.config.read_text(encoding='utf-8-sig'))
         args.speaker = config.get('speaker', args.speaker)
         STYLE = config.get('style', STYLE)
-    MODEL_KEY = str(Path(args.model).resolve())
+        args.backend = config.get('backend', args.backend)
+    MODEL_KEY = 'mlx:' + args.model if args.backend == 'mlx' else str(Path(args.model).resolve())
     slides = extract_slides(args.html.read_text(encoding='utf-8'))
-    selected = {int(n) for n in args.pages.split(',')} if args.pages else None
+    selected = {str(float(n)).removesuffix('.0') for n in args.pages.split(',')} if args.pages else None
     output = args.html.parent / 'narration'
     output.mkdir(exist_ok=True)
     manifest_path = output / 'manifest.json'
@@ -84,7 +87,7 @@ def main():
     if manifest.get('speaker') != args.speaker or manifest.get('style') != STYLE:
         manifest = {'version':1, 'model':'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice', 'speaker':args.speaker, 'style':STYLE, 'slides':{}}
     if args.plan:
-        print(json.dumps([{'page':s['page'],'segments':chunks(s['notes'])} for s in slides if not selected or s['page'] in selected], ensure_ascii=False, indent=2))
+        print(json.dumps([{'page':s['page'],'segments':chunks(s['notes'])} for s in slides if not selected or str(s['page']) in selected], ensure_ascii=False, indent=2))
         return
     from filelock import FileLock
     lock = FileLock(str(output / '.generation.lock'), timeout=0)
@@ -92,22 +95,42 @@ def main():
     atexit.register(lock.release)
     import numpy as np
     import soundfile as sf
-    import torch
-    from qwen_tts import Qwen3TTSModel
+    if args.backend == 'mlx':
+        import mlx.core as mx
+        from mlx_audio.tts.utils import load_model
+        mx.random.seed(42)
+        inference_context = nullcontext
+        args.batch_size = 1
+        def load_voice_model():
+            return load_model(args.model)
+        def generate_voice(model, text):
+            results = list(model.generate_custom_voice(text=text, language='Chinese', speaker=args.speaker.lower(), instruct=STYLE, max_tokens=2048))
+            if not results:
+                raise RuntimeError('No audio generated')
+            wave = np.concatenate([np.asarray(result.audio, dtype=np.float32).reshape(-1) for result in results])
+            return [wave], results[0].sample_rate
+    else:
+        import torch
+        from qwen_tts import Qwen3TTSModel
+        torch.set_num_threads(6)
+        torch.manual_seed(42)
+        if not torch.cuda.is_available():
+            raise RuntimeError('CUDA GPU is required; use backend=mlx on Apple Silicon')
+        inference_context = torch.inference_mode
+        def load_voice_model():
+            return Qwen3TTSModel.from_pretrained(args.model, device_map='cuda:0', dtype=torch.bfloat16, attn_implementation='sdpa')
+        def generate_voice(model, text):
+            return model.generate_custom_voice(text=text, language='Chinese', speaker=args.speaker, instruct=STYLE, non_streaming_mode=True, max_new_tokens=2048)
     def cache_audio(path, wave, sr):
         temporary = path.with_suffix('.tmp.wav')
         sf.write(temporary, wave, sr, subtype='PCM_16')
         temporary.replace(path)
-    torch.set_num_threads(6)
-    torch.manual_seed(42)
-    if not torch.cuda.is_available():
-        raise RuntimeError('CUDA GPU is required for this local rehearsal build')
     model = None
     cache_dir = output / '.segments'
     cache_dir.mkdir(exist_ok=True)
     pending = {}
     for slide in slides:
-        if selected and slide['page'] not in selected:
+        if selected and str(slide['page']) not in selected:
             continue
         for segment in chunks(slide['notes']):
             if 'text' in segment:
@@ -116,7 +139,7 @@ def main():
                     pending[key] = segment['text']
     if args.batch_size > 1 and pending:
         print('Loading local model for',len(pending),'segments',flush=True)
-        model = Qwen3TTSModel.from_pretrained(args.model, device_map='cuda:0', dtype=torch.bfloat16, attn_implementation='sdpa')
+        model = load_voice_model()
         ordered = sorted(pending.items(), key=lambda pair:len(pair[1]))
         for offset in range(0, len(ordered), args.batch_size):
             batch = ordered[offset:offset+args.batch_size]
@@ -135,7 +158,7 @@ def main():
             print('BATCH_DONE',offset+len(batch),'elapsed',round(time.time()-start,1),flush=True)
     for slide in slides:
         page = str(slide['page'])
-        if selected and slide['page'] not in selected:
+        if selected and str(slide['page']) not in selected:
             continue
         digest = signature(slide['notes'], args.speaker)
         cached = manifest['slides'].get(page)
@@ -161,10 +184,10 @@ def main():
             else:
                 if model is None:
                     print('Loading local model', args.model, flush=True)
-                    model = Qwen3TTSModel.from_pretrained(args.model, device_map='cuda:0', dtype=torch.bfloat16, attn_implementation='sdpa')
+                    model = load_voice_model()
                 print('GENERATE', page, speech_number, len(segment['text']), flush=True)
-                with torch.inference_mode():
-                    waves, sample_rate = model.generate_custom_voice(text=segment['text'], language='Chinese', speaker=args.speaker, instruct=STYLE, non_streaming_mode=True, max_new_tokens=2048)
+                with inference_context():
+                    waves, sample_rate = generate_voice(model, segment['text'])
                 wave = np.asarray(waves[0], dtype=np.float32)
                 if not np.isfinite(wave).all() or len(wave) < sample_rate * .2 or np.max(np.abs(wave)) < .001:
                     raise RuntimeError('Invalid/empty generated audio on page ' + page)
@@ -175,7 +198,7 @@ def main():
                 cache_audio(cache_path, wave, sample_rate)
             parts.append(wave)
         wave = np.concatenate(parts) if parts else np.zeros(sample_rate, dtype=np.float32)
-        filename = f'{int(page):02d}-{digest[:10]}.wav'
+        filename = f'{page.zfill(2)}-{digest[:10]}.wav'
         target = output / filename
         temporary = target.with_suffix('.tmp.wav')
         sf.write(temporary, wave, sample_rate, subtype='PCM_16')

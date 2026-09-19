@@ -203,7 +203,7 @@ def run(config):
                 file = assets / 'h5-editor' / name
             elif request.path.startswith('/deck/'):
                 file = (root / unquote(request.path.removeprefix('/deck/'))).resolve()
-                if not file.is_relative_to(root) or file.suffix.lower() not in ('.svg', '.png', '.jpg', '.jpeg', '.webp', '.woff', '.woff2', '.ttf', '.otf'):
+                if not file.is_relative_to(root) or file.suffix.lower() not in ('.svg', '.png', '.jpg', '.jpeg', '.webp', '.woff', '.woff2', '.ttf', '.otf', '.mp4', '.webm', '.mov'):
                     return self.send_error(404)
             else: return self.send_error(404)
             if not file.is_file(): return self.send_error(404)
@@ -215,13 +215,35 @@ def run(config):
             self.wfile.write(payload)
         def do_POST(self):
             endpoint = urlparse(self.path).path
-            if endpoint not in ('/save', '/reorder', '/delete-page', '/chapters', '/renumber'): return self.send_error(404)
+            if endpoint not in ('/save', '/reorder', '/delete-page', '/chapters', '/renumber', '/rename-page'): return self.send_error(404)
             if not self.authorized(): return self.send_json(403, {'error': '未授权'})
             try:
                 size = int(self.headers.get('Content-Length', 0))
                 if not 0 < size < 80 * 1024 * 1024: raise ValueError('文档过大')
                 data = json.loads(self.rfile.read(size))
                 with lock:
+                    if endpoint == '/rename-page':
+                        title = data.get('title')
+                        if not isinstance(title, str) or not 0 < len(title.strip()) <= 300:
+                            raise ValueError('页面标题须为 1–300 个字符')
+                        path = root / 'index.html'
+                        original = path.read_text(encoding='utf-8-sig')
+                        start = original.index('const slides=') + len('const slides=')
+                        items, length = json.JSONDecoder().raw_decode(original[start:])
+                        slide = next((s for s in items if str(s['page']) == str(data.get('page'))), None)
+                        if slide is None: raise ValueError('页面不存在')
+                        if slide['title'] != data.get('previousTitle'):
+                            return self.send_json(409, {'error': '标题已被其他窗口修改，请刷新后重试'})
+                        slide['title'] = title.strip()
+                        encoded = json.dumps(items, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+                        updated = original[:start] + encoded + original[start + length:]
+                        backup = root / '制作源' / 'PPTedit备份' / (time.strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8])
+                        backup.mkdir(parents=True)
+                        shutil.copy2(path, backup / path.name)
+                        temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+                        temporary.write_text(updated, encoding='utf-8')
+                        temporary.replace(path)
+                        return self.send_json(200, {'page': slide['page'], 'title': slide['title']})
                     if endpoint == '/chapters':
                         path = root / 'chapter-settings.json'
                         original = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
